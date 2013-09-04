@@ -20,15 +20,10 @@ def test_plain
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
 
-  res = con.send_message("ping")
-  assert_equal :connecting, res
+  res = con.connect
+  assert_equal :success, res
 
-  i = 0
-  while res == :connecting && i < 10
-    sleep(0.1)
-    res = con.send_message("ping")
-    i += 1
-  end
+  res = con.send_message("ping")
   assert_equal :success, res
 
   i = 0

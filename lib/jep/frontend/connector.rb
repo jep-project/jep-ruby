@@ -22,15 +22,13 @@ end
 
 def send_message(type, object={}, binary="")
   if connected?
-    object[:_message] = type
+    object["_message"] = type
     msg = JEP::Message.new(object, binary)
     @logger.debug("sent: #{msg.inspect}") if @logger
     @socket.send(serialize_message(msg), 0)
     :success
   else
-    connect unless connecting?
-    do_work
-    :connecting 
+    :not_connected
   end
 end
 
@@ -44,21 +42,57 @@ def stop
     sleep(0.1)
   end
   if connected?
-    send_message(JEP::Message.new({:_message => "Stop"}))
+    send_message(JEP::Message.new({"_message" => "Stop"}))
     while do_work 
       sleep(0.1)
     end
   end
 end
 
-private
-
 def connected?
   @state == :connected && backend_running?
 end
 
+def connect
+  return if connected?
+  connect_internal unless connecting?
+  i = 0
+  while !connected? && i<50
+    do_work
+    sleep(0.1)
+    i += 1
+  end
+  if i == 50
+    :timeout
+  else
+    :success
+  end
+end
+
+private
+
 def connecting?
   @state == :connecting
+end
+
+def connect_internal
+  @state = :connecting
+  @connect_start_time = Time.now
+
+  @logger.info "starting: #{@config.command}" if @logger
+
+  if @outfile_provider
+    @out_file = @outfile_provider.call
+  else
+    @out_file = tempfile_name 
+  end
+  @logger.debug "using output file #{@out_file}" if @logger
+  File.unlink(@out_file) if File.exist?(@out_file)
+
+  Dir.chdir(File.dirname(@config.file)) do
+    @process_id = spawn(@config.command.strip + " > #{@out_file} 2>&1")
+  end
+  @work_state = :wait_for_file
 end
 
 def backend_running?
@@ -80,26 +114,6 @@ def tempfile_name
     i += 1
   end
   file
-end
-
-def connect
-  @state = :connecting
-  @connect_start_time = Time.now
-
-  @logger.info "starting: #{@config.command}" if @logger
-
-  if @outfile_provider
-    @out_file = @outfile_provider.call
-  else
-    @out_file = tempfile_name 
-  end
-  @logger.debug "using output file #{@out_file}" if @logger
-  File.unlink(@out_file) if File.exist?(@out_file)
-
-  Dir.chdir(File.dirname(@config.file)) do
-    @process_id = spawn(@config.command.strip + " > #{@out_file} 2>&1")
-  end
-  @work_state = :wait_for_file
 end
 
 def do_work
