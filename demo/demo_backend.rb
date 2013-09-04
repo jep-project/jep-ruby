@@ -23,7 +23,7 @@ def handle_ContentSync(msg, context)
   if tab
     start_index = (msg.object["start"] || 0).to_i
     end_index = (msg.object["end"] || editor.length).to_i
-    if start_index >= 0 && start_index < editor.length &&
+    if start_index >= 0 && start_index <= editor.length &&
        end_index >= start_index && end_index <= editor.length
       editor.replaceText(start_index, end_index-start_index, msg.binary)
     else

@@ -2,7 +2,13 @@ $:.unshift File.join(File.dirname(__FILE__),"..","lib")
 require 'logger'
 require 'jep/frontend/connector_manager'
 
-man = JEP::Frontend::ConnectorManager.new(nil, 
+handler = Object.new
+class << handler
+def handle_OutOfSync(msg)
+  puts "** out of sync **"
+end
+end
+man = JEP::Frontend::ConnectorManager.new(handler,
   :logger => Logger.new($stdout),
   :keep_outfile => true)
 con = man.connector_for_file("dummy.demo")
@@ -13,7 +19,11 @@ while true
   file = gets.strip
   print "content: "
   content = gets.strip
+  print "indices: "
+  start_i, end_i = gets.strip.split(",").collect{|i| i.strip}
 
-  con.send_message("ContentSync", {"file" => file}, content)
+  con.send_message("ContentSync", {"file" => file, "start" => start_i, "end" => end_i}, content)
+  sleep(0.5)
+  con.resume
 end
 
