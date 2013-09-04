@@ -12,4 +12,5 @@ class << handler
   end
 end
 service = JEP::Backend::Service.new(handler, :timeout => 3, :logger => Logger.new($stdout))
-service.run
+service.startup
+service.receive_loop

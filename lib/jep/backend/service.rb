@@ -29,64 +29,113 @@ class Service
     @timeout = options[:timeout] || 60
     @logger = options[:logger]
     @on_startup = options[:on_startup]
+    @server = nil
+    @sockets = []
+    @request_data = {}
+    @last_flush_time = Time.now
   end
 
-  def run
-    server = create_server 
-    puts "JEP service, listening on port #{server.addr[1]}"
+  # startup the server, required before +receive+ or +receive_loop+ can be used
+  def startup
+    @server = create_server 
+    puts "JEP service, listening on port #{@server.addr[1]}"
     @on_startup.call if @on_startup
     $stdout.flush
+  end
 
-    last_access_time = Time.now
-    last_flush_time = Time.now
-    @stop_requested = false
-    sockets = []
-    request_data = {}
-    while !@stop_requested
+  # polling mode receive
+  def receive
+    raise "service not started" unless @server
+    begin
+      sock = @server.accept_nonblock
+      sock.sync = true
+      @sockets << sock
+      log(:info, "accepted connection")
+    rescue Errno::EAGAIN, Errno::ECONNABORTED, Errno::EPROTO, Errno::EINTR, Errno::EWOULDBLOCK
+    rescue Exception => e
+      log(:warn, "unexpected exception during socket accept: #{e.class}")
+    end
+    @sockets.dup.each do |sock|
+      data = nil
       begin
-        sock = server.accept_nonblock
-        sock.sync = true
-        sockets << sock
-        log(:info, "accepted connection")
-      rescue Errno::EAGAIN, Errno::ECONNABORTED, Errno::EPROTO, Errno::EINTR, Errno::EWOULDBLOCK
+        data = sock.read_nonblock(100000)
+      rescue Errno::EWOULDBLOCK
+      rescue IOError, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED
+        sock.close
+        @request_data[sock] = nil
+        @sockets.delete(sock)
       rescue Exception => e
-        log(:warn, "unexpected exception during socket accept: #{e.class}")
+        # catch Exception to make sure we don't crash due to unexpected exceptions
+        log(:warn, "unexpected exception during socket read: #{e.class}")
+        sock.close
+        @request_data[sock] = nil
+        @sockets.delete(sock)
       end
-      sockets.dup.each do |sock|
-        data = nil
-        begin
-          data = sock.read_nonblock(100000)
-        rescue Errno::EWOULDBLOCK
-        rescue IOError, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED
-          sock.close
-          request_data[sock] = nil
-          sockets.delete(sock)
-        rescue Exception => e
-          # catch Exception to make sure we don't crash due to unexpected exceptions
-          log(:warn, "unexpected exception during socket read: #{e.class}")
-          sock.close
-          request_data[sock] = nil
-          sockets.delete(sock)
-        end
-        if data
-          last_access_time = Time.now
-          request_data[sock] ||= ""
-          request_data[sock].concat(data)
-          while msg = extract_message(request_data[sock])
-            message_received(sock, msg)
-          end
+      if data
+        last_access_time = Time.now
+        @request_data[sock] ||= ""
+        @request_data[sock].concat(data)
+        while msg = extract_message(@request_data[sock])
+          message_received(sock, msg)
         end
       end
-      IO.select([server] + sockets, [], [], 1)
+    end
+    if Time.now > @last_flush_time + FlushInterval
+      $stdout.flush
+      @last_flush_time = Time.now
+    end
+  end
+
+  # receive loop which runs until stop is called or a timeouts occurs
+  def receive_loop
+    raise "service not started" unless @server
+    last_access_time = Time.now
+    @stop_requested = false
+    while !@stop_requested
+      receive
+      IO.select([@server] + @sockets, [], [], 1)
       if Time.now > last_access_time + @timeout
         log(:info, "JEP service, stopping now (timeout)")
         break 
       end
-      if Time.now > last_flush_time + FlushInterval
-        $stdout.flush
-        last_flush_time = Time.now
-      end
     end
+  end
+
+  # stop the receive loop
+  def stop
+    log(:info, "JEP service, stopping now (stop requested)")
+    @stop_requested = true
+  end
+
+  # not to be called by the user directly as +sock+ isn't known.
+  # call +send_message+ on the invocation context passed to the reception handler
+  def send_message(msg, sock)
+    # TODO: truncate large messages before logging
+    log(:debug, "sent: "+msg.inspect)
+    begin
+      sock.write(serialize_message(msg))
+      sock.flush
+    # if there is an exception, the next read should shutdown the connection properly
+    rescue IOError, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED
+    rescue Exception => e
+      # catch Exception to make sure we don't crash due to unexpected exceptions
+      log(:warn, "unexpected exception during socket write: #{e.class}")
+    end
+  end
+
+  private
+
+  def create_server
+    port = PortRangeStart
+    serv = nil
+    begin
+      serv = TCPServer.new("127.0.0.1", port)
+    rescue Errno::EADDRINUSE, Errno::EAFNOSUPPORT, Errno::EACCES
+      port += 1
+      retry if port <= PortRangeEnd
+      raise
+    end
+    serv
   end
 
   class InvocationContext
@@ -121,44 +170,10 @@ class Service
     log(:info, "reception complete (#{Time.now-reception_start}s)")
   end
 
-  def stop
-    log(:info, "JEP service, stopping now (stop requested)")
-    @stop_requested = true
-  end
-
-  def send_message(msg, sock)
-    # TODO: truncate large messages before logging
-    log(:debug, "sent: "+msg.inspect)
-    begin
-      sock.write(serialize_message(msg))
-      sock.flush
-    # if there is an exception, the next read should shutdown the connection properly
-    rescue IOError, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED
-    rescue Exception => e
-      # catch Exception to make sure we don't crash due to unexpected exceptions
-      log(:warn, "unexpected exception during socket write: #{e.class}")
-    end
-  end
-
-  private
-
   def log(severity, message)
     if @logger
       @logger.send(severity, message)
     end
-  end
-
-  def create_server
-    port = PortRangeStart
-    serv = nil
-    begin
-      serv = TCPServer.new("127.0.0.1", port)
-    rescue Errno::EADDRINUSE, Errno::EAFNOSUPPORT, Errno::EACCES
-      port += 1
-      retry if port <= PortRangeEnd
-      raise
-    end
-    serv
   end
 
 end
