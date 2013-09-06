@@ -14,6 +14,10 @@ man = JEP::Frontend::ConnectorManager.new(handler,
 con = man.connector_for_file("dummy.demo")
 con.connect
 
+trap("SIGINT") do
+  con.stop
+end
+
 while true
   print "file: "
   file = gets.strip
