@@ -1,6 +1,6 @@
 require 'socket'
-require 'win32/process'
 require 'jep/message_helper'
+require 'win32/process' if RUBY_PLATFORM =~ /mingw/
 
 module JEP
 module Frontend
@@ -92,22 +92,38 @@ def connect_internal
 
   @service_output_pipe_read, output_pipe_write = IO.pipe
 
-  @process_id = Process.create(
-    :command_line => @config.command.strip,
-    :startup_info => {
-      :stdout => output_pipe_write,
-      :stderr => output_pipe_write
-    },
-    :creation_flags   => Process::DETACHED_PROCESS,
-    :cwd => File.dirname(@config.file)
-  ).process_id
+  if RUBY_PLATFORM =~ /mingw/
+    @process_id = Process.create(
+      :command_line => @config.command.strip,
+      :startup_info => {
+        :stdout => output_pipe_write,
+        :stderr => output_pipe_write
+      },
+      :creation_flags   => Process::DETACHED_PROCESS,
+      :cwd => File.dirname(@config.file)
+    ).process_id
+  else
+    @process_id = Process.spawn(
+      @config.command.strip,
+      :chdir => File.dirname(@config.file),
+      :out => output_pipe_write,
+      :err => output_pipe_write
+    )
+  end
 
   @work_state = :wait_for_port
 end
 
 def backend_running?
   if @process_id
-    Process.get_exitcode(@process_id) == nil
+    if RUBY_PLATFORM =~ /mingw/
+      Process.get_exitcode(@process_id) == nil
+    else 
+      begin
+        return true unless Process.waitpid(@process_id, Process::WNOHANG)
+      rescue Errno::ECHILD
+      end
+    end
   else
     false
   end
@@ -192,6 +208,8 @@ def message_received(msg)
 end
 
 def read_service_output
+  # using IO.select with timeout 0 and read_partial simulates a read_nonblock
+  # which is not available on windows ("bad file handle")
   res = IO.select([@service_output_pipe_read], [], [], 0)
   while res
     @service_output.concat(@service_output_pipe_read.readpartial(1000))
