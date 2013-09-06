@@ -25,5 +25,6 @@ while true
   con.send_message("ContentSync", {"file" => file, "start" => start_i, "end" => end_i}, content)
   sleep(0.5)
   con.resume
+  puts con.read_service_output_lines.collect{|l| "backend: #{l}"}.join("\n")
 end
 

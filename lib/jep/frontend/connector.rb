@@ -1,12 +1,11 @@
 require 'socket'
-require 'tmpdir'
+require 'win32/process'
 require 'jep/message_helper'
 
 module JEP
 module Frontend
 
 class Connector
-include Process
 include JEP::MessageHelper
 
 def initialize(config, message_handler, options={})
@@ -15,9 +14,8 @@ def initialize(config, message_handler, options={})
   @state = :off
   @message_handler = message_handler
   @connection_listener = options[:connect_callback]
-  @outfile_provider = options[:outfile_provider]
-  @keep_outfile = options[:keep_outfile]
   @connection_timeout = options[:connection_timeout] || 10
+  @service_output = ""
 end
 
 def send_message(type, object={}, binary="")
@@ -69,6 +67,17 @@ def connect
   end
 end
 
+def read_service_output_lines
+  lines = @service_output.split("\n")
+  if @service_output[-1] == "\n"
+    @service_output = ""
+    lines
+  else
+    @service_output = lines[-1] || ""
+    lines[0..-2]
+  end
+end
+
 private
 
 def connecting?
@@ -81,58 +90,34 @@ def connect_internal
 
   @logger.info "starting: #{@config.command}" if @logger
 
-  if @outfile_provider
-    @out_file = @outfile_provider.call
-  else
-    @out_file = tempfile_name 
-  end
-  @logger.debug "using output file #{@out_file}" if @logger
-  File.unlink(@out_file) if File.exist?(@out_file)
+  @service_output_pipe_read, output_pipe_write = IO.pipe
 
-  Dir.chdir(File.dirname(@config.file)) do
-    @process_id = spawn(@config.command.strip + " > #{@out_file} 2>&1")
-  end
-  @work_state = :wait_for_file
+  @process_id = Process.create(
+    :command_line => @config.command.strip,
+    :startup_info => {
+      :stdout => output_pipe_write,
+      :stderr => output_pipe_write
+    },
+    :creation_flags   => Process::DETACHED_PROCESS,
+    :cwd => File.dirname(@config.file)
+  ).process_id
+
+  @work_state = :wait_for_port
 end
 
 def backend_running?
   if @process_id
-    begin
-      return true unless waitpid(@process_id, Process::WNOHANG)
-    rescue Errno::ECHILD
-    end
+    Process.get_exitcode(@process_id) == nil
+  else
+    false
   end
-  false
-end
-
-def tempfile_name
-  dir = Dir.tmpdir
-  i = 0
-  file = nil 
-  while !file || File.exist?(file)
-    file = dir+"/jep.temp.#{i}"
-    i += 1
-  end
-  file
 end
 
 def do_work
+  read_service_output
   case @work_state
-  when :wait_for_file
-    if File.exist?(@out_file)
-      @work_state = :wait_for_port
-    end
-    if Time.now > @connect_start_time + @connection_timeout
-      cleanup
-      @connection_listener.call(:timeout) if @connection_listener
-      @work_state = :done
-      @state = :off
-      @logger.warn "process didn't startup (connection timeout)" if @logger
-    end
-    true
   when :wait_for_port
-    output = File.read(@out_file)
-    if output =~ /^JEP service, listening on port (\d+)/
+    if @service_output =~ /^JEP service, listening on port (\d+)/
       port = $1.to_i
       @logger.info "connecting to #{port}" if @logger
       begin
@@ -206,14 +191,16 @@ def message_received(msg)
   @logger.info("reception complete (#{Time.now-reception_start}s)") if @logger
 end
 
+def read_service_output
+  res = IO.select([@service_output_pipe_read], [], [], 0)
+  while res
+    @service_output.concat(@service_output_pipe_read.readpartial(1000))
+    res = IO.select([@service_output_pipe_read], [], [], 0)
+  end
+end
+
 def cleanup
   @socket.close if @socket
-  # wait up to 5 seconds for backend to shutdown
-  for i in 0..50 
-    break unless backend_running?
-    sleep(0.1)
-  end
-  File.unlink(@out_file) unless @keep_outfile
 end
 
 end
