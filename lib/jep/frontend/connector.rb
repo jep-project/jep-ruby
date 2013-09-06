@@ -35,15 +35,11 @@ def resume
 end
 
 def stop
-  while connecting?
-    do_work
-    sleep(0.1)
-  end
   if connected?
-    send_message(JEP::Message.new({"_message" => "Stop"}))
-    while do_work 
-      sleep(0.1)
-    end
+    send_message("Stop")
+    :success
+  else
+    :not_connected
   end
 end
 
@@ -68,6 +64,7 @@ def connect
 end
 
 def read_service_output_lines
+  read_service_output
   lines = @service_output.split("\n")
   if @service_output[-1] == "\n"
     @service_output = ""
