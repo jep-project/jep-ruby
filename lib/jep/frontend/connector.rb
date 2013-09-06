@@ -212,8 +212,12 @@ def read_service_output
   # which is not available on windows ("bad file handle")
   res = IO.select([@service_output_pipe_read], [], [], 0)
   while res
-    @service_output.concat(@service_output_pipe_read.readpartial(1000))
-    res = IO.select([@service_output_pipe_read], [], [], 0)
+    begin
+      @service_output.concat(@service_output_pipe_read.readpartial(1000))
+      res = IO.select([@service_output_pipe_read], [], [], 0)
+    rescue EOFError
+      res = false
+    end
   end
 end
 
