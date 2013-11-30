@@ -18,6 +18,10 @@ def initialize(config, message_handler, options={})
   @service_output = ""
 end
 
+def file
+  @config.file
+end
+
 def send_message(type, object={}, binary="")
   if connected?
     object["_message"] = type

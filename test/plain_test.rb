@@ -7,7 +7,7 @@ class PlainTest < Test::Unit::TestCase
 
 def test_send
   man = JEP::Frontend::ConnectorManager.new(nil, 
-    :logger => Logger.new($stdout),
+    :logger => proc {|c| Logger.new($stdout)},
     :keep_outfile => true)
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
@@ -31,7 +31,7 @@ def test_pingpong
   end
 
   man = JEP::Frontend::ConnectorManager.new(handler, 
-    :logger => Logger.new($stdout),
+    :logger => proc {|c| Logger.new($stdout)},
     :keep_outfile => true)
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
@@ -52,7 +52,7 @@ end
 
 def test_stop
   man = JEP::Frontend::ConnectorManager.new(nil, 
-    :logger => Logger.new($stdout),
+    :logger => proc {|c| Logger.new($stdout)},
     :keep_outfile => true)
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con

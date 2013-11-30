@@ -13,11 +13,9 @@ class ConnectorManager
 
 def initialize(message_handler, options={})
   @message_handler = message_handler
-  @logger = options[:logger]
+  @logger_provider = options[:logger_provider]
   @connector_descs = {}
   @connector_listener = options[:connect_callback]
-  @keep_outfile = options[:keep_outfile]
-  @outfile_provider = options[:outfile_provider]
   @connection_timeout = options[:connection_timeout]
 end
 
@@ -53,8 +51,7 @@ private
 
 def create_connector(config, pattern)
   con = Connector.new(config, @message_handler,
-    :logger => @logger, :keep_outfile => @keep_outfile,
-    :outfile_provider => @outfile_provider,
+    :logger => @logger_provider && @logger_provider.call(con),
     :connection_timeout => @connection_timeout,
     :connect_callback => lambda do |state|
       @connector_listener.call(con, state) if @connector_listener
