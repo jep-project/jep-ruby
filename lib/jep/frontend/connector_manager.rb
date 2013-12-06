@@ -5,8 +5,7 @@ require 'jep/frontend/connector'
 module JEP
 module Frontend
 
-# A ConnectorManager manages Connectors for files being edited.
-# It creates new connectors by means of the connector provider block attached to the constructor.
+# A ConnectorManager decides when to create new connectors.
 # When a config file changes, all affected connectors are restarted on the next request.
 #
 class ConnectorManager

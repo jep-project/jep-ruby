@@ -49,9 +49,14 @@ def test_backend_startup_problem
   man = JEP::Frontend::ConnectorManager.new do |config|
     JEP::Frontend::Connector.new(config)
   end
+
   con = man.connector_for_file("plain/file.hang_on_startup")
   assert_not_nil con
-  assert_equal :success, con.connect
+
+  con.connect
+  con.work :for => 1, :while => ->{ !con.connected? }
+
+  assert !con.connected?
 end
 
 def test_send
@@ -64,7 +69,10 @@ def test_send
 
   assert_equal :not_connected, con.send_message("something")
 
-  assert_equal :success, con.connect
+  con.connect
+  con.work :for => 5, :while => ->{ !con.connected? }
+
+  assert con.connected?
 
   assert_equal :success, con.send_message("something")
 end
@@ -88,17 +96,15 @@ def test_pingpong
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
 
-  res = con.connect
-  assert_equal :success, res
+  con.connect
+  con.work :for => 5, :while => ->{ !con.connected? }
+
+  assert con.connected?
 
   res = con.send_message("ping")
   assert_equal :success, res
 
-  10.times do 
-    sleep(0.1)
-    con.resume
-    break if handler.got_pong
-  end
+  con.work :for => 1, :while => ->{ !handler.got_pong }
   assert handler.got_pong
 end
 
@@ -113,11 +119,12 @@ def test_stop
 
   assert_equal :not_connected, con.stop
 
-  res = con.connect
-  assert_equal :success, res
+  con.connect
+  con.work :for => 5, :while => ->{ !con.connected? }
 
-  res = con.stop
-  assert_equal :success, res
+  assert con.connected?
+
+  assert_equal :success, con.stop
 
   stopped = false
   10.times do

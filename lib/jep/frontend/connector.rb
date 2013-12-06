@@ -5,6 +5,8 @@ require 'win32/process' if RUBY_PLATFORM =~ /mingw/
 module JEP
 module Frontend
 
+# Connector states: [disconnected, connecting, connected]
+
 class Connector
 include JEP::MessageHelper
 
@@ -13,7 +15,7 @@ attr_reader :config
 def initialize(config, options={})
   @config = config
   @logger = options[:logger]
-  @state = :off
+  @state = :disconnected
   @message_handler = options[:message_handler]
   @connection_listener = options[:connect_callback]
   @connection_timeout = options[:connection_timeout] || 10
@@ -32,11 +34,23 @@ def send_message(type, object={}, binary="")
   end
 end
 
-def resume
-  do_work
-  if @log_service_output
-    service_output_lines.each do |l|
-      @logger.info("SVC>: #{l}")
+# if :for is given, work for the specified amount of seconds
+# if :while is given as well, work only while proc returns true
+def work(options={})
+  for_time = options[:for]
+  while_proc = options[:while]
+  if for_time
+    (1..for_time*10).each do
+      work
+      break if while_proc && !while_proc.call
+      sleep(0.1)
+    end
+  else
+    do_work
+    if @log_service_output
+      service_output_lines.each do |l|
+        @logger.info("SVC>: #{l}")
+      end
     end
   end
 end
@@ -55,18 +69,8 @@ def connected?
 end
 
 def connect
-  return if connected?
-  connect_internal unless connecting?
-  i = 0
-  while !connected? && i<50
-    do_work
-    sleep(0.1)
-    i += 1
-  end
-  if i == 50
-    :timeout
-  else
-    :success
+  if @state == :disconnected
+    connect_internal 
   end
 end
 
@@ -120,6 +124,7 @@ def connect_internal
   end
 
   @work_state = :wait_for_port
+  nil
 end
 
 def backend_running?
@@ -155,7 +160,7 @@ def do_work
         cleanup
         @connection_listener.call(:timeout) if @connection_listener
         @work_state = :done
-        @state = :off
+        @state = :disconnected
         @logger.warn "could not connect socket (connection refused)" if @logger
       end
     end
@@ -163,7 +168,7 @@ def do_work
       cleanup
       @connection_listener.call(:timeout) if @connection_listener
       @work_state = :done
-      @state = :off
+      @state = :disconnected
       @logger.warn "could not connect socket (connection timeout)" if @logger
     end
     true
