@@ -211,7 +211,7 @@ def do_work
         while msg = extract_message(response_data)
           message_received(msg)
         end
-      elsif !backend_running? || socket_closed
+      elsif socket_closed
         cleanup
         @state = :disconnected
         return false
