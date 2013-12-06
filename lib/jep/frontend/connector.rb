@@ -5,7 +5,7 @@ require 'win32/process' if RUBY_PLATFORM =~ /mingw/
 module JEP
 module Frontend
 
-# Connector states: [disconnected, connecting, connected]
+# Connector states: [init, connecting, connected, disconnected]
 
 class Connector
 include JEP::MessageHelper
@@ -15,12 +15,11 @@ attr_reader :config
 def initialize(config, options={})
   @config = config
   @logger = options[:logger]
-  @state = :disconnected
   @message_handler = options[:message_handler]
   @connection_listener = options[:connect_callback]
   @connection_timeout = options[:connection_timeout] || 10
   @log_service_output = options[:log_service_output]
-  @service_output = ""
+  reset_state
 end
 
 def send_message(type, object={}, binary="")
@@ -56,17 +55,30 @@ def work(options={})
 end
 
 def start
-  if @state == :disconnected
+  if @state == :init
     start_internal 
+    :success
+  else
+    :not_stopped
   end
 end
 
-def stop
-  if connected?
-    send_message("Stop")
+def stop(options={})
+  if @state != :init
+    wait_time = options[:wait] || 5
+    if connected?
+      # try to stop backend gracefully
+      send_message("Stop")
+      work :for => wait_time, :while => ->{ backend_running? }
+    end
+    if backend_running?
+      # still running, do it the hard way
+      kill_backend
+    end
+    reset_state
     :success
   else
-    :not_connected
+    :not_started
   end
 end
 
@@ -80,6 +92,11 @@ def read_service_output_lines
 end
 
 private
+
+def reset_state
+  @state = :init
+  @service_output = ""
+end
 
 def service_output_lines
   lines = @service_output.split("\n")
@@ -123,7 +140,7 @@ def start_internal
     )
   end
 
-  @work_state = :wait_for_port
+  @connection_state = :wait_for_port
   nil
 end
 
@@ -142,9 +159,16 @@ def backend_running?
   end
 end
 
+def kill_backend
+  if @process_id
+    # same for win and non-win platforms
+    Process.kill(9, @process_id)
+  end
+end
+
 def do_work
   read_service_output
-  case @work_state
+  case @connection_state
   when :wait_for_port
     if @service_output =~ /^JEP service, listening on port (\d+)/
       port = $1.to_i
@@ -153,13 +177,13 @@ def do_work
         @socket = TCPSocket.new("127.0.0.1", port)
         @socket.setsockopt(:SOCKET, :RCVBUF, 1000000)
         @state = :connected
-        @work_state = :read_from_socket
+        @connection_state = :read_from_socket
         @connection_listener.call(:connected) if @connection_listener
         @logger.info "connected" if @logger
       rescue Errno::ECONNREFUSED
         cleanup
         @connection_listener.call(:timeout) if @connection_listener
-        @work_state = :done
+        @connection_state = :done
         @state = :disconnected
         @logger.warn "could not connect socket (connection refused)" if @logger
       end
@@ -167,7 +191,7 @@ def do_work
     if Time.now > @connect_start_time + @connection_timeout
       cleanup
       @connection_listener.call(:timeout) if @connection_listener
-      @work_state = :done
+      @connection_state = :done
       @state = :disconnected
       @logger.warn "could not connect socket (connection timeout)" if @logger
     end
@@ -194,7 +218,7 @@ def do_work
         end
       elsif !backend_running? || socket_closed
         cleanup
-        @work_state = :done
+        @connection_state = :done
         return false
       end
     end

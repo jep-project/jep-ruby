@@ -117,7 +117,7 @@ def test_stop
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
 
-  assert_equal :not_connected, con.stop
+  assert_equal :not_started, con.stop
 
   con.start
   con.work :for => 5, :while => ->{ !con.connected? }
@@ -125,16 +125,6 @@ def test_stop
   assert con.connected?
 
   assert_equal :success, con.stop
-
-  stopped = false
-  10.times do
-    sleep(0.1)
-    if con.read_service_output_lines.any?{|l| l =~ /JEP service, stopping now/}
-      stopped = true
-      break
-    end
-  end
-  assert stopped
 end
 
 end
