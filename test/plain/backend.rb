@@ -21,5 +21,14 @@ end
 
 # short timeout ensures that the backend stops by itself
 service = JEP::Backend::Service.new(handler, :timeout => 3, :logger => logger)
+
+if ARGV.include?("nostop")
+  class << service
+    def stop
+      # do not stop
+    end
+  end
+end
+
 service.startup
 service.receive_loop

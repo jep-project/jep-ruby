@@ -19,39 +19,7 @@ def initialize(config, options={})
   @connection_listener = options[:connect_callback]
   @connection_timeout = options[:connection_timeout] || 10
   @log_service_output = options[:log_service_output]
-  reset_state
-end
-
-def send_message(type, object={}, binary="")
-  if connected?
-    msg = JEP::Message.new(type, object, binary)
-    @logger.debug("sent: #{msg.inspect}") if @logger
-    @socket.send(serialize_message(msg), 0)
-    :success
-  else
-    :not_connected
-  end
-end
-
-# if :for is given, work for the specified amount of seconds
-# if :while is given as well, work only while proc returns true
-def work(options={})
-  for_time = options[:for]
-  while_proc = options[:while]
-  if for_time
-    (1..for_time*10).each do
-      work
-      break if while_proc && !while_proc.call
-      sleep(0.1)
-    end
-  else
-    do_work
-    if @log_service_output
-      service_output_lines.each do |l|
-        @logger.info("SVC>: #{l}")
-      end
-    end
-  end
+  @state = :init
 end
 
 def start
@@ -66,16 +34,18 @@ end
 def stop(options={})
   if @state != :init
     wait_time = options[:wait] || 5
+    log :info, "stopping"
     if connected?
       # try to stop backend gracefully
       send_message("Stop")
       work :for => wait_time, :while => ->{ backend_running? }
     end
     if backend_running?
+      log :info, "backend still running, killing it"
       # still running, do it the hard way
       kill_backend
     end
-    reset_state
+    @state = :init
     :success
   else
     :not_started
@@ -83,41 +53,68 @@ def stop(options={})
 end
 
 def connected?
-  @state == :connected && backend_running?
+  @state == :connected
 end
 
+def backend_running?
+  if @process_id
+    if RUBY_PLATFORM =~ /mingw/
+      Process.get_exitcode(@process_id) == nil
+    else 
+      begin
+        return true unless Process.waitpid(@process_id, Process::WNOHANG)
+      rescue Errno::ECHILD
+      end
+    end
+  else
+    false
+  end
+end
+
+def send_message(type, object={}, binary="")
+  if connected?
+    msg = JEP::Message.new(type, object, binary)
+    log :debug, "sent: #{msg.inspect}"
+    @socket.send(serialize_message(msg), 0)
+    :success
+  else
+    :not_connected
+  end
+end
+
+# read all complete service output lines
 def read_service_output_lines
   read_service_output
-  service_output_lines
+  res = @service_output_lines
+  @service_output_lines = []
+  res
+end
+
+# if :for is given, work for the specified amount of seconds
+# if :while is given as well, work only while proc returns true
+def work(options={})
+  for_time = options[:for]
+  while_proc = options[:while]
+  if for_time
+    (1..for_time*10).each do
+      work
+      break if while_proc && !while_proc.call
+      sleep(0.1)
+    end
+  else
+    work_internal
+  end
 end
 
 private
 
-def reset_state
-  @state = :init
-  @service_output = ""
-end
-
-def service_output_lines
-  lines = @service_output.split("\n")
-  if @service_output[-1] == "\n"
-    @service_output = ""
-    lines
-  else
-    @service_output = lines[-1] || ""
-    lines[0..-2]
-  end
-end
-
-def connecting?
-  @state == :connecting
-end
-
 def start_internal
   @state = :connecting
+  @service_output = ""
+  @service_output_lines = []
   @connect_start_time = Time.now
 
-  @logger.info "starting: #{@config.command}" if @logger
+  log :info, "starting: #{@config.command}"
 
   @service_output_pipe_read, output_pipe_write = IO.pipe
 
@@ -142,21 +139,6 @@ def start_internal
   nil
 end
 
-def backend_running?
-  if @process_id
-    if RUBY_PLATFORM =~ /mingw/
-      Process.get_exitcode(@process_id) == nil
-    else 
-      begin
-        return true unless Process.waitpid(@process_id, Process::WNOHANG)
-      rescue Errno::ECHILD
-      end
-    end
-  else
-    false
-  end
-end
-
 def kill_backend
   if @process_id
     # same for win and non-win platforms
@@ -164,33 +146,30 @@ def kill_backend
   end
 end
 
-def do_work
+def work_internal
   read_service_output
   case @state
   when :connecting
-    if @service_output =~ /^JEP service, listening on port (\d+)/
+    if @service_output_lines.size > 0 && 
+        @service_output_lines[0] =~ /^JEP service, listening on port (\d+)/
       port = $1.to_i
-      @logger.info "connecting to #{port}" if @logger
+      log :info, "connecting to #{port}"
       begin
         @socket = TCPSocket.new("127.0.0.1", port)
         @socket.setsockopt(:SOCKET, :RCVBUF, 1000000)
         @state = :connected
         @connection_listener.call(:connected) if @connection_listener
-        @logger.info "connected" if @logger
+        log :info, "connected"
       rescue Errno::ECONNREFUSED
-        cleanup
-        @connection_listener.call(:timeout) if @connection_listener
+        @socket.close if @socket
         @state = :disconnected
-        @logger.warn "could not connect socket (connection refused)" if @logger
+        log :warn, "could not connect socket (connection refused)"
       end
     end
     if Time.now > @connect_start_time + @connection_timeout
-      cleanup
-      @connection_listener.call(:timeout) if @connection_listener
       @state = :disconnected
-      @logger.warn "could not connect socket (connection timeout)" if @logger
+      log :warn, "could not connect socket (connection timeout)"
     end
-    true
   when :connected
     repeat = true
     socket_closed = false
@@ -203,7 +182,7 @@ def do_work
       rescue Errno::EWOULDBLOCK
       rescue IOError, EOFError, Errno::ECONNRESET
         socket_closed = true
-        @logger.info "server socket closed (end of file)" if @logger
+        log :info, "server socket closed (end of file)"
       end
       if data
         repeat = true
@@ -212,31 +191,28 @@ def do_work
           message_received(msg)
         end
       elsif socket_closed
-        cleanup
+        @socket.close
         @state = :disconnected
-        return false
       end
     end
-    true
   end
-
 end
 
 def message_received(msg)
   reception_start = Time.now
-  @logger.debug("received: "+msg.inspect) if @logger
+  log :debug, "received: "+msg.inspect
   message_type = msg.type
   if message_type
     handler_method = "handle_#{message_type}".to_sym
     if @message_handler.respond_to?(handler_method)
       @message_handler.send(handler_method, msg)
     else
-      @logger.warn("can not handle message #{message_type}") if @logger
+      log :warn, "can not handle message #{message_type}"
     end
   else
-    @logger.warn("invalid message (no '_message' property)") if @logger
+    log :warn, "invalid message (no '_message' property)"
   end
-  @logger.info("reception complete (#{Time.now-reception_start}s)") if @logger
+  log :info, "reception complete (#{Time.now-reception_start}s)"
 end
 
 def read_service_output
@@ -251,10 +227,32 @@ def read_service_output
       res = false
     end
   end
+  full_lines = extract_full_service_output_lines
+  if @log_service_output
+    full_lines.each do |l|
+      log :info, "SVC>>>: #{l}"
+    end
+  end
+  @service_output_lines.concat(full_lines)
+  # prevent output lines list from growing too large
+  if @service_output.size > 20000
+    @service_output_lines.shift(10000)
+  end
 end
 
-def cleanup
-  @socket.close if @socket
+def extract_full_service_output_lines
+  lines = @service_output.split("\n")
+  if @service_output[-1] == "\n"
+    @service_output = ""
+    lines
+  else
+    @service_output = lines[-1] || ""
+    lines[0..-2]
+  end
+end
+
+def log(level, msg)
+  @logger.send(level, msg) if @logger
 end
 
 end

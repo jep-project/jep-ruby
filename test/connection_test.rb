@@ -3,10 +3,10 @@ require 'test/unit'
 require 'logger'
 require 'jep/frontend/connector_manager'
 
-class PlainTest < Test::Unit::TestCase
+class ConnectionTest < Test::Unit::TestCase
 
 def setup
-  @logger = Logger.new($stdout)
+  #@logger = Logger.new($stdout)
   class << @logger
     def format_message(severity, timestamp, progname, msg)
       "#{severity} #{msg}\n"
@@ -47,7 +47,8 @@ end
 
 def test_backend_startup_problem
   man = JEP::Frontend::ConnectorManager.new do |config|
-    JEP::Frontend::Connector.new(config)
+    JEP::Frontend::Connector.new(config,
+    :logger => @logger)
   end
 
   con = man.connector_for_file("plain/file.hang_on_startup")
@@ -55,8 +56,47 @@ def test_backend_startup_problem
 
   con.start
   con.work :for => 1, :while => ->{ !con.connected? }
-
   assert !con.connected?
+
+  con.stop
+  con.work :for => 1, :while => ->{ con.backend_running? }
+  assert !con.backend_running?
+end
+
+def test_backend_connection_problem
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config,
+    :logger => @logger)
+  end
+
+  con = man.connector_for_file("plain/file.cant_connect")
+  assert_not_nil con
+
+  con.start
+  con.work :for => 1, :while => ->{ !con.connected? }
+  assert !con.connected?
+
+  con.stop
+  con.work :for => 1, :while => ->{ con.backend_running? }
+  assert !con.backend_running?
+end
+
+def test_backend_stop_problem
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config,
+    :logger => @logger)
+  end
+
+  con = man.connector_for_file("plain/file.cant_stop")
+  assert_not_nil con
+
+  con.start
+  con.work :for => 1, :while => ->{ !con.connected? }
+  assert con.connected?
+
+  con.stop(:wait => 1)
+  con.work :for => 1, :while => ->{ con.backend_running? }
+  assert !con.backend_running?
 end
 
 def test_send
@@ -125,6 +165,48 @@ def test_stop
   assert con.connected?
 
   assert_equal :success, con.stop
+  assert !con.connected?
+  assert con.read_service_output_lines.any?{|l| l =~ /JEP service, stopping now/}
+end
+
+def test_restart
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config,
+      :logger => @logger)
+  end
+
+  con = man.connector_for_file("plain/file.plain")
+
+  con.start
+  con.work :for => 5, :while => ->{ !con.connected? }
+  assert con.connected?
+
+  assert_equal :success, con.stop
+  assert !con.connected?
+  assert con.read_service_output_lines.any?{|l| l =~ /JEP service, stopping now/}
+
+  con.start
+  con.work :for => 5, :while => ->{ !con.connected? }
+  assert con.connected?
+end
+
+def test_read_output_lines_with_logger
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config,
+      :logger => @logger,
+      :log_service_output => true)
+  end
+
+  con = man.connector_for_file("plain/file.plain")
+
+  con.start
+  con.work :for => 5, :while => ->{ !con.connected? }
+
+  con.send_message("ping")
+  con.work :for => 0.5
+
+  assert con.read_service_output_lines.any?{|l| l =~ /received.+ping/}
+  con.stop
 end
 
 end
