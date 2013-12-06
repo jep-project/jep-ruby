@@ -55,6 +55,12 @@ def work(options={})
   end
 end
 
+def start
+  if @state == :disconnected
+    start_internal 
+  end
+end
+
 def stop
   if connected?
     send_message("Stop")
@@ -66,12 +72,6 @@ end
 
 def connected?
   @state == :connected && backend_running?
-end
-
-def connect
-  if @state == :disconnected
-    connect_internal 
-  end
 end
 
 def read_service_output_lines
@@ -96,7 +96,7 @@ def connecting?
   @state == :connecting
 end
 
-def connect_internal
+def start_internal
   @state = :connecting
   @connect_start_time = Time.now
 

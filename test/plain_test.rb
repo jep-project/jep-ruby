@@ -53,7 +53,7 @@ def test_backend_startup_problem
   con = man.connector_for_file("plain/file.hang_on_startup")
   assert_not_nil con
 
-  con.connect
+  con.start
   con.work :for => 1, :while => ->{ !con.connected? }
 
   assert !con.connected?
@@ -69,7 +69,7 @@ def test_send
 
   assert_equal :not_connected, con.send_message("something")
 
-  con.connect
+  con.start
   con.work :for => 5, :while => ->{ !con.connected? }
 
   assert con.connected?
@@ -96,7 +96,7 @@ def test_pingpong
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
 
-  con.connect
+  con.start
   con.work :for => 5, :while => ->{ !con.connected? }
 
   assert con.connected?
@@ -119,7 +119,7 @@ def test_stop
 
   assert_equal :not_connected, con.stop
 
-  con.connect
+  con.start
   con.work :for => 5, :while => ->{ !con.connected? }
 
   assert con.connected?
