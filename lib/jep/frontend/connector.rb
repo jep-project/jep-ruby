@@ -139,8 +139,6 @@ def start_internal
       :err => output_pipe_write
     )
   end
-
-  @connection_state = :wait_for_port
   nil
 end
 
@@ -168,8 +166,8 @@ end
 
 def do_work
   read_service_output
-  case @connection_state
-  when :wait_for_port
+  case @state
+  when :connecting
     if @service_output =~ /^JEP service, listening on port (\d+)/
       port = $1.to_i
       @logger.info "connecting to #{port}" if @logger
@@ -177,13 +175,11 @@ def do_work
         @socket = TCPSocket.new("127.0.0.1", port)
         @socket.setsockopt(:SOCKET, :RCVBUF, 1000000)
         @state = :connected
-        @connection_state = :read_from_socket
         @connection_listener.call(:connected) if @connection_listener
         @logger.info "connected" if @logger
       rescue Errno::ECONNREFUSED
         cleanup
         @connection_listener.call(:timeout) if @connection_listener
-        @connection_state = :done
         @state = :disconnected
         @logger.warn "could not connect socket (connection refused)" if @logger
       end
@@ -191,12 +187,11 @@ def do_work
     if Time.now > @connect_start_time + @connection_timeout
       cleanup
       @connection_listener.call(:timeout) if @connection_listener
-      @connection_state = :done
       @state = :disconnected
       @logger.warn "could not connect socket (connection timeout)" if @logger
     end
     true
-  when :read_from_socket
+  when :connected
     repeat = true
     socket_closed = false
     response_data = ""
@@ -218,7 +213,7 @@ def do_work
         end
       elsif !backend_running? || socket_closed
         cleanup
-        @connection_state = :done
+        @state = :disconnected
         return false
       end
     end
