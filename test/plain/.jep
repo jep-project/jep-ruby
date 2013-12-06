@@ -1,2 +1,5 @@
-*.plain:
+*.plain, *.plain2:
 ruby backend.rb
+*.hang_on_startup:
+ruby -e 'while true; end'
+

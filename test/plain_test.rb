@@ -5,20 +5,68 @@ require 'jep/frontend/connector_manager'
 
 class PlainTest < Test::Unit::TestCase
 
+def setup
+  @logger = Logger.new($stdout)
+  class << @logger
+    def format_message(severity, timestamp, progname, msg)
+      "#{severity} #{msg}\n"
+    end
+  end
+end
+
+def test_connector_identity
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config)
+  end
+
+  con = man.connector_for_file("plain/file.plain")
+
+  con2 = man.connector_for_file("plain/file.plain")
+  assert_equal con.object_id, con2.object_id
+
+  con3 = man.connector_for_file("plain/file2.plain")
+  assert_equal con.object_id, con3.object_id
+
+  # different extension
+  con4 = man.connector_for_file("plain/file.plain2")
+  assert_equal con.object_id, con4.object_id
+
+  # different .jep file
+  con5 = man.connector_for_file("plain2/file.plain")
+  assert_not_equal con.object_id, con5.object_id
+end
+
+def test_non_existing_file
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config)
+  end
+
+  con = man.connector_for_file("plain/non_existing_file")
+  assert_nil con
+end
+
+def test_backend_startup_problem
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config)
+  end
+  con = man.connector_for_file("plain/file.hang_on_startup")
+  assert_not_nil con
+  assert_equal :success, con.connect
+end
+
 def test_send
-  man = JEP::Frontend::ConnectorManager.new(nil, 
-    :logger => proc {|c| Logger.new($stdout)},
-    :keep_outfile => true)
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config)
+  end
+
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
 
   assert_equal :not_connected, con.send_message("something")
 
-  res = con.connect
-  assert_equal :success, res
+  assert_equal :success, con.connect
 
-  res = con.send_message("something")
-  assert_equal :success, res
+  assert_equal :success, con.send_message("something")
 end
 
 def test_pingpong
@@ -30,9 +78,13 @@ def test_pingpong
     end
   end
 
-  man = JEP::Frontend::ConnectorManager.new(handler, 
-    :logger => proc {|c| Logger.new($stdout)},
-    :keep_outfile => true)
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config, 
+      :message_handler => handler,
+      :logger => @logger,
+      :log_service_output => true)
+  end
+
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
 
@@ -51,9 +103,11 @@ def test_pingpong
 end
 
 def test_stop
-  man = JEP::Frontend::ConnectorManager.new(nil, 
-    :logger => proc {|c| Logger.new($stdout)},
-    :keep_outfile => true)
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config,
+      :logger => @logger)
+  end
+
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
 

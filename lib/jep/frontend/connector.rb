@@ -8,24 +8,22 @@ module Frontend
 class Connector
 include JEP::MessageHelper
 
-def initialize(config, message_handler, options={})
+attr_reader :config
+
+def initialize(config, options={})
   @config = config
   @logger = options[:logger]
   @state = :off
-  @message_handler = message_handler
+  @message_handler = options[:message_handler]
   @connection_listener = options[:connect_callback]
   @connection_timeout = options[:connection_timeout] || 10
+  @log_service_output = options[:log_service_output]
   @service_output = ""
-end
-
-def file
-  @config.file
 end
 
 def send_message(type, object={}, binary="")
   if connected?
-    object["_message"] = type
-    msg = JEP::Message.new(object, binary)
+    msg = JEP::Message.new(type, object, binary)
     @logger.debug("sent: #{msg.inspect}") if @logger
     @socket.send(serialize_message(msg), 0)
     :success
@@ -36,6 +34,11 @@ end
 
 def resume
   do_work
+  if @log_service_output
+    service_output_lines.each do |l|
+      @logger.info("SVC>: #{l}")
+    end
+  end
 end
 
 def stop
@@ -69,6 +72,12 @@ end
 
 def read_service_output_lines
   read_service_output
+  service_output_lines
+end
+
+private
+
+def service_output_lines
   lines = @service_output.split("\n")
   if @service_output[-1] == "\n"
     @service_output = ""
@@ -78,8 +87,6 @@ def read_service_output_lines
     lines[0..-2]
   end
 end
-
-private
 
 def connecting?
   @state == :connecting
@@ -194,7 +201,7 @@ end
 def message_received(msg)
   reception_start = Time.now
   @logger.debug("received: "+msg.inspect) if @logger
-  message_type = msg.object["_message"]
+  message_type = msg.type
   if message_type
     handler_method = "handle_#{message_type}".to_sym
     if @message_handler.respond_to?(handler_method)

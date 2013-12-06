@@ -8,6 +8,7 @@ module MessageHelper
 # serialize message object +message+ into a JEP message string
 def serialize_message(message)
   obj = message.object
+  obj["_message"] = message.type
   bin = message.binary
 
   escape_all_strings(obj)
@@ -52,7 +53,9 @@ def extract_message(data)
   end
   if obj
     unescape_all_strings(obj)
-    Message.new(obj, bin)
+    type = obj["_message"]
+    obj.delete("_message")
+    Message.new(type, obj, bin)
   else
     nil
   end

@@ -5,18 +5,15 @@ require 'jep/frontend/connector'
 module JEP
 module Frontend
 
-# A ConnectorManager provides Connectors for files being edited.
-# It starts the connectors if necessary and keeps track of them in order to reuse them.
+# A ConnectorManager manages Connectors for files being edited.
+# It creates new connectors by means of the connector provider block attached to the constructor.
 # When a config file changes, all affected connectors are restarted on the next request.
 #
 class ConnectorManager
 
-def initialize(message_handler, options={})
-  @message_handler = message_handler
-  @logger_provider = options[:logger_provider]
+def initialize(&connector_provider)
+  @connector_provider = connector_provider
   @connector_descs = {}
-  @connector_listener = options[:connect_callback]
-  @connection_timeout = options[:connection_timeout]
 end
 
 ConnectorDesc = Struct.new(:connector, :checksum)
@@ -24,8 +21,7 @@ ConnectorDesc = Struct.new(:connector, :checksum)
 def connector_for_file(file)
   config = Config.find_service_config(file)
   if config
-    file_pattern = Config.file_pattern(file)
-    key = desc_key(config, file_pattern)
+    key = desc_key(config)
     desc = @connector_descs[key]
     if desc
       if desc.checksum == config_checksum(config)
@@ -33,10 +29,10 @@ def connector_for_file(file)
       else
         # connector must be replaced
         desc.connector.stop
-        create_connector(config, file_pattern) 
+        create_connector(config) 
       end
     else
-      create_connector(config, file_pattern)
+      create_connector(config)
     end
   else
     nil
@@ -49,21 +45,16 @@ end
 
 private
 
-def create_connector(config, pattern)
-  con = Connector.new(config, @message_handler,
-    :logger => @logger_provider && @logger_provider.call(con),
-    :connection_timeout => @connection_timeout,
-    :connect_callback => lambda do |state|
-      @connector_listener.call(con, state) if @connector_listener
-    end)
+def create_connector(config)
+  con = @connector_provider.call(config)
   desc = ConnectorDesc.new(con, config_checksum(config))
-  key = desc_key(config, pattern)
+  key = desc_key(config)
   @connector_descs[key] = desc
   desc.connector
 end
 
-def desc_key(config, pattern)
-  config.file.downcase + "," + pattern
+def desc_key(config)
+  config.file.downcase + "," + config.patterns.join(",")
 end
 
 def config_checksum(config)

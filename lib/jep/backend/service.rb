@@ -144,8 +144,7 @@ class Service
       @socket = socket
     end
     def send_message(type, obj={}, binary="")
-      obj[:_message] = type
-      @service.send_message(Message.new(obj, binary), @socket)
+      @service.send_message(Message.new(type, obj, binary), @socket)
     end
     def stop_service
       @service.stop
@@ -156,7 +155,7 @@ class Service
     reception_start = Time.now
     # TODO: truncate large messages before logging
     log(:debug, "received: "+msg.inspect)
-    message_type = msg.object["_message"]
+    message_type = msg.type
     if message_type
       handler_method = "handle_#{message_type}".to_sym
       if @message_handler.respond_to?(handler_method)

@@ -11,7 +11,15 @@ class << handler
     context.send_message("pong")
   end
 end
+
+logger = Logger.new($stdout)
+class << logger
+  def format_message(severity, timestamp, progname, msg)
+    "#{severity} #{msg}\n"
+  end
+end
+
 # short timeout ensures that the backend stops by itself
-service = JEP::Backend::Service.new(handler, :timeout => 3, :logger => Logger.new($stdout))
+service = JEP::Backend::Service.new(handler, :timeout => 3, :logger => logger)
 service.startup
 service.receive_loop
