@@ -22,6 +22,6 @@ handler = JEP::Backend::MessageHandler.new(
     problems
   end
 )
-service = JEP::Backend::Service.new(handler, :logger => Logger.new($stdout))
+service = JEP::Backend::Service.new(handler, :logger => Logger.new($stdout), :timeout => 3600)
 service.startup
 service.receive_loop
