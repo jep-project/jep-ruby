@@ -1,0 +1,5 @@
+class RubyC
+  def initialize
+    ++
+  end
+end

@@ -11,6 +11,7 @@ class Connector
 include JEP::MessageHelper
 
 attr_reader :config
+attr_reader :message_handler
 
 def initialize(config, options={})
   @config = config

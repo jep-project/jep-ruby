@@ -1,9 +1,10 @@
 *.plain, *.plain2:
-ruby backend.rb
+ruby pingpong.rb
 *.hang_on_startup:
 ruby -e 'sleep(10)'
 *.cant_connect:
 ruby -e 'puts "JEP service, listening on port 9100"'
 *.cant_stop:
-ruby backend.rb nostop
-
+ruby pingpong.rb nostop
+*.probs:
+ruby problems.rb

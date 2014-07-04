@@ -2,6 +2,7 @@ $:.unshift(File.dirname(__FILE__)+"/../lib")
 require 'fox16'
 require 'logger'
 require 'jep/backend/service'
+require 'parser/current'
 
 include Fox
 
@@ -26,6 +27,7 @@ def handle_ContentSync(msg, context)
     if start_index >= 0 && start_index <= editor.length &&
        end_index >= start_index && end_index <= editor.length
       editor.replaceText(start_index, end_index-start_index, msg.binary)
+      run_check(editor.extractText(0, editor.length))
     else
       context.send_message("OutOfSync")
     end
@@ -51,6 +53,16 @@ end
 
 def handle_Stop(msg, context)
   getApp.exit
+end
+
+def run_check(text)
+  parser = Parser::CurrentRuby.new
+  parser.diagnostics.consumer = lambda do |diag|
+    puts diag.inspect
+  end
+  buffer = Parser::Source::Buffer.new('(string)')
+  buffer.source = text
+  parser.parse(buffer)
 end
 
 end

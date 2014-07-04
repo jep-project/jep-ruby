@@ -42,10 +42,10 @@ def content_changed(file, content, context)
   if @content_checker
     problems = @content_checker.call(file, content)
     context.send_message("ProblemUpdate", {
-      :fileProblems => {
+      :fileProblems => [{
         :file => file,
         :problems => problems
-      }
+      }]
     })
   end
 end
