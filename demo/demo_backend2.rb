@@ -8,6 +8,7 @@ handler = JEP::Backend::MessageHandler.new(
   :content_checker => proc do |file, content|
     problems = []
     parser = Parser::CurrentRuby.new
+    parser.diagnostics.all_errors_are_fatal = false
     parser.diagnostics.consumer = lambda do |diag|
       problems << {
         # dup since diag message is frozen
