@@ -19,7 +19,7 @@ def handle_ContentSync(msg, context)
     start_index = (msg.object["start"] || "0").to_i
     end_index = (msg.object["end"] || "-1").to_i
     if contents
-      contents[start_index..end_index] = msg.binary
+      contents[start_index...end_index] = msg.binary
       content_changed(file, contents, context)
     else
       if start_index == 0

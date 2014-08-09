@@ -1,57 +1,56 @@
-require 'rspec'
+$:.unshift(File.dirname(__FILE__)+"/../lib")
+require 'logger'
+require 'jep/backend/service'
+require 'jep/backend/message_handler'
+require 'parser/current'
+require_relative 'inifile_parser'
 
-class IniFileParser
+class GitConfig
+  EMAIL_PATTERN = /.+@.+/
 
-  ParseError = Struct.new(:line, :line_number, :message)
-  Section = Struct.new(:name, :properties)
-
-  attr_reader :errors, :sections
-  def self.from_file(file)
-    from_string(File.read(file))
-  end
-  def self.from_string(s)
-    IniFileParser.new(s)
-  end
-  def initialize(content)
-    @errors = []
-    @sections = {}
-    line_number = 1
-    content.each_line do |line|
-      parse(line.strip, line_number)
-      line_number += 1
-    end
-  end
-  COMMENT_PATTERN = /^\#|;/
-  START_OF_SECTION_PATTERN = /^\[/
-  SECTION_PATTERN = /^\[([^\]]+?)\]$/
-  KEY_VALUE_PATTERN = /^\s*([^=]+?)\s*=\s*(.+?)\s*$/
-  def parse(line, line_number)
-    return if line.match(COMMENT_PATTERN)
-
-    if line.match(START_OF_SECTION_PATTERN)
-      section = line.match(SECTION_PATTERN)
-      if section
-        name = section[1]
-        @current_section = Section.new(name, {})
-        @sections[name] = @current_section
-      else
-        @errors << ParseError.new(line, line_number, 'wrong section header')
-      end
-      return
-    end
-
-    key_value = line.match(KEY_VALUE_PATTERN)
-    if key_value
-      if @current_section
-        @current_section.properties[key_value[1]] = key_value[2]
-      else
-        @errors << ParseError.new(line, line_number, 'key value outside of section')
+  def self.search_in(working_dir, file_name, content)
+    configs = [IniFileParser.from_string(file_name, content)]
+    configs = collect_configs(configs, File.absolute_path(File.join(working_dir, '..')))
+    configs.each do |config|
+      user_section = config.sections['user']
+      if user_section
+        email = user_section.properties['email']
+        if email
+          if !email.value.match(EMAIL_PATTERN)#TODO use real line of key_value
+            config.errors << IniFileParser::ParseError.new("test", email.line_number, "user email seems fishy '#{email.value}'", "warning")
+          end
+        end
       end
     end
+  end
+
+  def self.collect_configs(configs, dir)
+    config_name = File.absolute_path(File.join(dir, '.gitconfig'))
+    if File.exist?(config_name)
+      puts "found #{config_name}"
+      configs << IniFileParser.from_file(config_name)
+    end
+    parent = File.absolute_path(File.join(dir, '..'))
+    configs = collect_configs(configs, parent) unless parent == "/"
+    configs
   end
 end
 
+handler = JEP::Backend::MessageHandler.new(
+  :content_checker => proc do |file, content|
+    GitConfig.search_in('.', file, content).
+      map{|c|c.errors}.
+      flatten.
+      map do |parse_error|
+      {
+        :message => parse_error.message,
+        :line => parse_error.line_number.to_i,
+        :severity => parse_error.severity
+      }
+    end
+  end
+)
 
-
-
-
+service = JEP::Backend::Service.new(handler, :logger => Logger.new($stdout), :timeout => 3600)
+service.startup
+service.receive_loop

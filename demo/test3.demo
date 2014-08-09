@@ -1,0 +1,13 @@
+require 'parser/current'
+
+parser = Parser::CurrentRuby.new
+parser.diagnostics.consumer = lambda do |diag|
+  puts diag.message
+  puts diag.location.line
+  end
+buffer = Parser::Source::Buffer.new('(string)')
+buffer.source = <<-END
+hello
+  1+*3
+END
+parser.parse(buffer)
