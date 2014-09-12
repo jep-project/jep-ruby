@@ -228,20 +228,22 @@ def read_service_output
       res = false
     end
   end
-  full_lines = extract_full_service_output_lines
+  completed_lines = extract_completed_service_output_lines
   if @log_service_output
-    full_lines.each do |l|
+    completed_lines.each do |l|
       log :info, "SVC>>>: #{l}"
     end
   end
-  @service_output_lines.concat(full_lines)
+  @service_output_lines.concat(completed_lines)
   # prevent output lines list from growing too large
   if @service_output.size > 20000
     @service_output_lines.shift(10000)
   end
 end
 
-def extract_full_service_output_lines
+# removes and returns all completed lines from service output
+# where a line is completed after a \n
+def extract_completed_service_output_lines
   lines = @service_output.split("\n")
   if @service_output[-1] == "\n"
     @service_output = ""
