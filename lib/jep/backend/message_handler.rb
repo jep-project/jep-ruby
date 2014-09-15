@@ -5,6 +5,7 @@ class MessageHandler
 
 def initialize(options={})
   @content_checker = options[:content_checker]
+  @completio_provider = options[:completion_provider]
   @file_contents = {}
 end
 
@@ -32,7 +33,30 @@ def handle_ContentSync(msg, context)
       end
     end
   else
-    # missing file property
+    context.log(:error, "ContentSync: missing file property")
+  end
+end
+
+def handle_CompletionRequest(msg, context)
+  file = msg.object["file"]
+  if file
+    contents = @file_contents[file]
+    if contents
+      pos = msg.object["pos"]
+      if pos
+        if @completion_provider
+          @completion_provider.call(file, content, pos)
+        else
+          context.log(:info, "CompletionRequest: no provider registered")
+        end
+      else
+        context.log(:error, "CompletionRequest: missing position property")
+      end
+    else
+      context.log(:error, "CompletionRequest: unknown file #{file}")
+    end
+  else
+    context.log(:error, "CompletionRequest: missing file property")
   end
 end
 

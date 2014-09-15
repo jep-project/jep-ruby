@@ -149,6 +149,9 @@ class Service
     def stop_service
       @service.stop
     end
+    def log(severity, message)
+      @service.log(severity, message)
+    end
   end
 
   def message_received(sock, msg)

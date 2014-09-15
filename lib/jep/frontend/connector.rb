@@ -107,6 +107,10 @@ def work(options={})
   end
 end
 
+def log(level, msg)
+  @logger.send(level, msg) if @logger
+end
+
 private
 
 def start_internal
@@ -252,10 +256,6 @@ def extract_completed_service_output_lines
     @service_output = lines[-1] || ""
     lines[0..-2]
   end
-end
-
-def log(level, msg)
-  @logger.send(level, msg) if @logger
 end
 
 end
