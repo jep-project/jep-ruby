@@ -1,5 +1,5 @@
 require 'socket'
-require 'jep/message_helper'
+require 'jep/message_serializer'
 require 'win32/process' if RUBY_PLATFORM =~ /mingw/
 
 module JEP
@@ -8,8 +8,6 @@ module Frontend
 # Connector states: [init, connecting, connected, disconnected]
 
 class Connector
-include JEP::MessageHelper
-
 attr_reader :config
 attr_reader :message_handler
 
@@ -20,6 +18,7 @@ def initialize(config, options={})
   @connection_listener = options[:connect_callback]
   @connection_timeout = options[:connection_timeout] || 10
   @log_service_output = options[:log_service_output]
+  @message_serializer = MessageSerializer.new
   @state = :init
 end
 
@@ -76,7 +75,7 @@ def send_message(type, object={}, binary="")
   if connected?
     msg = JEP::Message.new(type, object, binary)
     log :debug, "sent: #{msg.inspect}"
-    @socket.send(serialize_message(msg), 0)
+    @socket.send(@message_serializer.serialize_message(msg), 0)
     :success
   else
     :not_connected
@@ -192,7 +191,7 @@ def work_internal
       if data
         repeat = true
         response_data.concat(data)
-        while msg = extract_message(response_data)
+        while msg = @message_serializer.deserialize_message(response_data)
           message_received(msg)
         end
       elsif socket_closed
@@ -206,17 +205,7 @@ end
 def message_received(msg)
   reception_start = Time.now
   log :debug, "received: "+msg.inspect
-  message_type = msg.type
-  if message_type
-    handler_method = "handle_#{message_type}".to_sym
-    if @message_handler.respond_to?(handler_method)
-      @message_handler.send(handler_method, msg)
-    else
-      log :warn, "can not handle message #{message_type}"
-    end
-  else
-    log :warn, "invalid message (no '_message' property)"
-  end
+  @message_handler.message_received(msg)
   log :info, "reception complete (#{Time.now-reception_start}s)"
 end
 

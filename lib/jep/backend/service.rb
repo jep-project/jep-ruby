@@ -33,6 +33,7 @@ class Service
     @sockets = []
     @request_data = {}
     @last_flush_time = Time.now
+    @message_serializer = MessageSerializer.new
   end
 
   # startup the server, required before +receive+ or +receive_loop+ can be used
@@ -75,7 +76,7 @@ class Service
         last_access_time = Time.now
         @request_data[sock] ||= ""
         @request_data[sock].concat(data)
-        while msg = extract_message(@request_data[sock])
+        while msg = @message_serializer.deserialize_message(@request_data[sock])
           message_received(sock, msg)
         end
       end
@@ -113,7 +114,7 @@ class Service
     # TODO: truncate large messages before logging
     log(:debug, "sent: "+msg.inspect)
     begin
-      sock.write(serialize_message(msg))
+      sock.write(@message_serializer.serialize_message(msg))
       sock.flush
     # if there is an exception, the next read should shutdown the connection properly
     rescue IOError, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED
@@ -158,17 +159,7 @@ class Service
     reception_start = Time.now
     # TODO: truncate large messages before logging
     log(:debug, "received: "+msg.inspect)
-    message_type = msg.type
-    if message_type
-      handler_method = "handle_#{message_type}".to_sym
-      if @message_handler.respond_to?(handler_method)
-        @message_handler.send(handler_method, msg, InvocationContext.new(self, sock))
-      else
-        log(:warn, "can not handle message #{message_type}")
-      end
-    else
-      log(:warn, "invalid message (no '_message' property)")
-    end
+    @message_handler.message_received(msg, InvocationContext.new(self, sock))
     log(:info, "reception complete (#{Time.now-reception_start}s)")
   end
 

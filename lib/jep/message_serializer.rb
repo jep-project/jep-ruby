@@ -1,18 +1,22 @@
 require 'json'
-require 'jep/message'
 
 module JEP
 
-module MessageHelper
+# Serialize and deserialize raw JEP messages into strings.
+#
+# A raw JEP message is a Hash object with 2 special keys:
+#  _message: the message type as a string
+#  _binary: binary data which will be appended to protocol frames
+#
+class MessageSerializer
 
-# serialize message object +message+ into a JEP message string
+# serialize raw message +message+ into a JEP message string
 def serialize_message(message)
-  obj = message.object
-  obj["_message"] = message.type
-  bin = message.binary
+  # remove binary part so it won't be escaped
+  bin = message.delete("_binary")
 
-  escape_all_strings(obj)
-  result = object_to_json(obj)
+  escape_all_strings(message)
+  result = object_to_json(message)
   # the JSON conversion outputs data in UTF-8 encoding and
   # the JEP protocol expects message lengths measured in bytes;
   # there shouldn't be any non-ascii-7-bit characters, though, so json.size would also be ok
@@ -26,13 +30,12 @@ def serialize_message(message)
   result
 end
 
-# extracts a full message from the beginning of +data+ and cuts down +data+ accordingly;
-# returns the message object or nil if +data+ doesn't contain a (complete) message
-def extract_message(data)
+# deserializes a full message from the beginning of +data+ and cuts down +data+ accordingly;
+# returns the message hash or nil if +data+ doesn't contain a (complete) message
+def deserialize_message(data)
   # interpret input data as binary
   data.force_encoding("binary")
   obj = nil
-  bin = nil
   if data =~ /^(\d+):(\d+)\{/
     length_length = $1.size + 1 + $2.size
     overall_length, json_length = $1.to_i, $2.to_i
@@ -47,18 +50,14 @@ def extract_message(data)
       json.encode!("utf-8", :undef => :replace)
       obj = json_to_object(json)
 
+      # unescape before binary part is added
+      unescape_all_strings(obj)
+
       # we already forced data to be binary encoded
-      bin = data.slice!(0..(overall_length-json_length)-1)
+      obj["_binary"] = data.slice!(0..(overall_length-json_length)-1)
     end
   end
-  if obj
-    unescape_all_strings(obj)
-    type = obj["_message"]
-    obj.delete("_message")
-    Message.new(type, obj, bin)
-  else
-    nil
-  end
+  obj
 end
 
 # override this method to use other JSON implementations
