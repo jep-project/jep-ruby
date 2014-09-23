@@ -1,14 +1,15 @@
 $:.unshift(File.dirname(__FILE__)+"/../../lib")
 require 'logger'
-require 'jep/backend/message_handler'
 require 'jep/backend/service'
 
 $stdout.sync = true
 
-handler = JEP::Backend::MessageHandler.new
+handler = Object.new
 class << handler
-  def handle_ping(msg, context)
-    context.send_message("pong")
+  def message_received(msg, context)
+    if msg["ping"]
+      context.send_message({"pong" => true})
+    end
   end
 end
 

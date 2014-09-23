@@ -13,7 +13,7 @@ class MessageSerializer
 # serialize raw message +message+ into a JEP message string
 def serialize_message(message)
   # remove binary part so it won't be escaped
-  bin = message.delete("_binary")
+  bin = message.delete("_binary") || ""
 
   escape_all_strings(message)
   result = object_to_json(message)

@@ -107,22 +107,22 @@ def test_send
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
 
-  assert_equal :not_connected, con.send_message("something")
+  assert_equal :not_connected, con.send_message({"something" => true})
 
   con.start
   con.work :for => 5, :while => ->{ !con.connected? }
 
   assert con.connected?
 
-  assert_equal :success, con.send_message("something")
+  assert_equal :success, con.send_message({"something" => true})
 end
 
 def test_pingpong
   handler = Object.new
   class << handler
     attr_accessor :got_pong
-    def handle_pong(msg)
-      @got_pong = true
+    def message_received(msg)
+      @got_pong = true if msg["pong"]
     end
   end
 
@@ -141,7 +141,7 @@ def test_pingpong
 
   assert con.connected?
 
-  res = con.send_message("ping")
+  res = con.send_message({"ping" => true})
   assert_equal :success, res
 
   con.work :for => 1, :while => ->{ !handler.got_pong }
@@ -202,7 +202,7 @@ def test_read_output_lines_with_logger
   con.start
   con.work :for => 5, :while => ->{ !con.connected? }
 
-  con.send_message("ping")
+  con.send_message({"ping" => true})
   con.work :for => 0.5
 
   assert con.read_service_output_lines.any?{|l| l =~ /received.+ping/}

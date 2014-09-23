@@ -1,11 +1,10 @@
 require 'socket'
-require 'jep/message_helper'
+require 'jep/message_serializer'
 
 module JEP
 module Backend
 
 class Service
-  include JEP::MessageHelper
 
   PortRangeStart = 9001
   PortRangeEnd   = 9100
@@ -144,8 +143,8 @@ class Service
       @service = service
       @socket = socket
     end
-    def send_message(type, obj={}, binary="")
-      @service.send_message(Message.new(type, obj, binary), @socket)
+    def send_message(msg)
+      @service.send_message(msg, @socket)
     end
     def stop_service
       @service.stop

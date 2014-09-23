@@ -37,7 +37,7 @@ def stop(options={})
     log :info, "stopping"
     if connected?
       # try to stop backend gracefully
-      send_message("Stop")
+      send_message({"_message" => "Stop"})
       work :for => wait_time, :while => ->{ backend_running? }
     end
     if backend_running?
@@ -71,9 +71,8 @@ def backend_running?
   end
 end
 
-def send_message(type, object={}, binary="")
+def send_message(msg)
   if connected?
-    msg = JEP::Message.new(type, object, binary)
     log :debug, "sent: #{msg.inspect}"
     @socket.send(@message_serializer.serialize_message(msg), 0)
     :success
@@ -205,7 +204,7 @@ end
 def message_received(msg)
   reception_start = Time.now
   log :debug, "received: "+msg.inspect
-  @message_handler.message_received(msg)
+  @message_handler.message_received(msg) if @message_handler
   log :info, "reception complete (#{Time.now-reception_start}s)"
 end
 
