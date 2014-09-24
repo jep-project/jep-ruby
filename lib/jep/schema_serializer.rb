@@ -7,6 +7,7 @@ class SchemaSerializer
 attr_accessor :logger
 
 def serialize_message(message)
+  raise "not a message" unless message.is_a?(Schema::Message)
   hash = serialize_struct(message)
   hash["_message"] = message.class.ecore.name
   hash
@@ -16,7 +17,7 @@ def serialize_struct(struct)
   hash = {}
   struct.class.ecore.eAllStructuralFeatures.each do |f|
     # ignore parent refs
-    next if f.eOpposite && f.eOpposite.containment
+    next if f.is_a?(RGen::ECore::EReference) && f.eOpposite && f.eOpposite.containment
     val = struct.getGeneric(f.name)
     if val.is_a?(Array)
       if !val.empty?
@@ -24,7 +25,13 @@ def serialize_struct(struct)
       end
     else
       if !val.nil?
-        hash[f.name] = serialize_value(f, val)
+        # binary property is a special hash key
+        if f.name == "binary"
+          fname = "_binary"
+        else
+          fname = f.name
+        end
+        hash[fname] = serialize_value(f, val)
       end
     end
   end
@@ -35,7 +42,7 @@ def serialize_value(f, val)
   if f.eType.is_a?(RGen::ECore::EClass)
     serialize_struct(val)
   elsif f.eType.is_a?(RGen::ECore::EEnum)
-    val.to_str
+    val.to_s
   else
     # String, Integer and Boolean are already correct
     val
