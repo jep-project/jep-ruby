@@ -1,5 +1,7 @@
 require 'socket'
 require 'jep/message_serializer'
+require 'jep/schema_instantiator'
+require 'jep/schema_serializer'
 require 'win32/process' if RUBY_PLATFORM =~ /mingw/
 
 module JEP
@@ -37,7 +39,7 @@ def stop(options={})
     log :info, "stopping"
     if connected?
       # try to stop backend gracefully
-      send_message({"_message" => "Stop"})
+      send_message(Schema::Shutdown.new)
       work :for => wait_time, :while => ->{ backend_running? }
     end
     if backend_running?
@@ -73,8 +75,9 @@ end
 
 def send_message(msg)
   if connected?
-    log :debug, "sent: #{msg.inspect}"
-    @socket.send(@message_serializer.serialize_message(msg), 0)
+    msg_hash = SchemaSerializer.new.serialize_message(msg)
+    @socket.send(@message_serializer.serialize_message(msg_hash), 0)
+    log :debug, "sent: #{msg_hash.inspect}"
     :success
   else
     :not_connected
@@ -204,7 +207,8 @@ end
 def message_received(msg)
   reception_start = Time.now
   log :debug, "received: "+msg.inspect
-  @message_handler.message_received(msg) if @message_handler
+  @message_handler.message_received(
+    SchemaInstantiator.new.instantiate_message(msg)) if @message_handler
   log :info, "reception complete (#{Time.now-reception_start}s)"
 end
 

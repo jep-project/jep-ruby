@@ -1,12 +1,13 @@
 $:.unshift File.join(File.dirname(__FILE__),"..","lib")
 require 'test/unit'
 require 'logger'
+require 'jep/schema'
 require 'jep/frontend/connector_manager'
 
 class ConnectionTest < Test::Unit::TestCase
 
 def setup
-  #@logger = Logger.new($stdout)
+  @logger = Logger.new($stdout)
   class << @logger
     def format_message(severity, timestamp, progname, msg)
       "#{severity} #{msg}\n"
@@ -107,14 +108,14 @@ def test_send
   con = man.connector_for_file("plain/file.plain")
   assert_not_nil con
 
-  assert_equal :not_connected, con.send_message({"something" => true})
+  assert_equal :not_connected, con.send_message(JEP::Schema::ContentSync.new)
 
   con.start
   con.work :for => 5, :while => ->{ !con.connected? }
 
   assert con.connected?
 
-  assert_equal :success, con.send_message({"something" => true})
+  assert_equal :success, con.send_message(JEP::Schema::ContentSync.new)
 end
 
 def test_pingpong
@@ -122,7 +123,7 @@ def test_pingpong
   class << handler
     attr_accessor :got_pong
     def message_received(msg)
-      @got_pong = true if msg["pong"]
+      @got_pong = true if msg.is_a?(JEP::Schema::OutOfSync)
     end
   end
 
@@ -141,7 +142,7 @@ def test_pingpong
 
   assert con.connected?
 
-  res = con.send_message({"ping" => true})
+  res = con.send_message(JEP::Schema::ContentSync.new)
   assert_equal :success, res
 
   con.work :for => 1, :while => ->{ !handler.got_pong }
@@ -202,10 +203,10 @@ def test_read_output_lines_with_logger
   con.start
   con.work :for => 5, :while => ->{ !con.connected? }
 
-  con.send_message({"ping" => true})
+  con.send_message(JEP::Schema::OutOfSync.new)
   con.work :for => 0.5
 
-  assert con.read_service_output_lines.any?{|l| l =~ /received.+ping/}
+  assert con.read_service_output_lines.any?{|l| l =~ /received.+OutOfSync/}
   con.stop
 end
 

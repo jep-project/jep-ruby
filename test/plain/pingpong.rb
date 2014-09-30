@@ -1,14 +1,15 @@
 $:.unshift(File.dirname(__FILE__)+"/../../lib")
 require 'logger'
 require 'jep/backend/service'
+require 'jep/schema'
 
 $stdout.sync = true
 
 handler = Object.new
 class << handler
   def message_received(msg, context)
-    if msg["ping"]
-      context.send_message({"pong" => true})
+    if msg.is_a?(JEP::Schema::ContentSync)
+      context.send_message(JEP::Schema::OutOfSync.new)
     end
   end
 end

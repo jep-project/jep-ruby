@@ -1,5 +1,7 @@
 require 'socket'
 require 'jep/message_serializer'
+require 'jep/schema_serializer'
+require 'jep/schema_instantiator'
 
 module JEP
 module Backend
@@ -110,11 +112,12 @@ class Service
   # not to be called by the user directly as +sock+ isn't known.
   # call +send_message+ on the invocation context passed to the reception handler
   def send_message(msg, sock)
-    # TODO: truncate large messages before logging
-    log(:debug, "sent: "+msg.inspect)
     begin
-      sock.write(@message_serializer.serialize_message(msg))
+      msg_hash = SchemaSerializer.new.serialize_message(msg)
+      sock.write(@message_serializer.serialize_message(msg_hash))
       sock.flush
+      # TODO: truncate large messages before logging
+      log(:debug, "sent: "+msg_hash.inspect)
     # if there is an exception, the next read should shutdown the connection properly
     rescue IOError, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED
     rescue Exception => e
@@ -158,7 +161,9 @@ class Service
     reception_start = Time.now
     # TODO: truncate large messages before logging
     log(:debug, "received: "+msg.inspect)
-    @message_handler.message_received(msg, InvocationContext.new(self, sock))
+    @message_handler.message_received(
+      SchemaInstantiator.new.instantiate_message(msg),
+      InvocationContext.new(self, sock))
     log(:info, "reception complete (#{Time.now-reception_start}s)")
   end
 
