@@ -12,16 +12,14 @@ class MessageSerializer
 
 # serialize raw message +message+ into a JEP message string
 def serialize_message(message)
-  # remove binary part so it won't be escaped
-  bin = message.delete("_binary") || ""
-
-  escape_all_strings(message)
+  escape_all_strings(message, :except => ["_binary"])
   result = object_to_json(message)
   # the JSON conversion outputs data in UTF-8 encoding and
   # the JEP protocol expects message lengths measured in bytes;
   # there shouldn't be any non-ascii-7-bit characters, though, so json.size would also be ok
   json_len = result.bytesize
 
+  bin = message["_binary"] || ""
   bin.force_encoding("binary")
   binary_len = bin.size
 
@@ -70,8 +68,8 @@ def json_to_object(json)
   JSON(json)
 end
 
-def escape_all_strings(obj)
-  each_json_object_string(obj) do |s|
+def escape_all_strings(obj, options={})
+  each_json_object_string(obj, options[:except]) do |s|
     s.force_encoding("binary")
     bytes = s.bytes.to_a
     s.clear
@@ -97,15 +95,16 @@ def unescape_all_strings(obj)
   end
 end
 
-def each_json_object_string(object, &block)
+def each_json_object_string(object, except=nil, &block)
   if object.is_a?(Hash)
     object.each_pair do |k, v|
+      next if except && except.any?{|e| e == k}
       # don't call block for hash keys
-      each_json_object_string(v, &block)
+      each_json_object_string(v, except, &block)
     end
   elsif object.is_a?(Array)
     object.each do |v|
-      each_json_object_string(v, &block)
+      each_json_object_string(v, except, &block)
     end
   elsif object.is_a?(String)
     yield(object)
