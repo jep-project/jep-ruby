@@ -1,5 +1,6 @@
-require 'jep/frontend/problem_list'
-require 'jep/frontedn/completion_list'
+require 'jep/frontend/problem_tracker'
+require 'jep/schema'
+#require 'jep/frontend/completion_list'
 
 module JEP
 module Frontend
@@ -9,18 +10,27 @@ class DefaultHandler
 attr_accessor :connector
 
 def initialize(options={})
-  @problem_list = ProblemList.new
+  @problem_tracker = ProblemTracker.new
+  @problem_tracker.add_change_listener(method(:problems_changed))
   @on_problem_change = options[:on_problem_change] || ->(probs){}
   @completion_requests = {}
 end
 
-def handle_ProblemUpdate(msg)
-  @problem_list.update(msg)
-  @on_problem_change.call(@problem_list.get_problems)
+def message_received(msg)
+  case msg
+  when Schema::ProblemUpdate
+    @problem_tracker.update(msg)
+  when Schema::CompletionResponse
+    handle_completion_response
+  end
+end
+
+def problems_changed(file)
+  @on_problem_change.call(@problem_tracker.problems_by_file)
 end
 
 def sync_file(file, content)
-  @connector.send_message("ContentSync", {"file" => file}, content)
+  @connector.send_message(Schema::ContentSync.new(:file => file, :binary => content))
 end
 
 # Request a CompletionList object for +file+ and +pos+.
@@ -63,7 +73,7 @@ def completion_result(token)
   end
 end
 
-def handle_CompletionResponse(msg)
+def handle_completion_response(msg)
   token = msg.object["token"]
   req =  @completion_requests[token]
   if req

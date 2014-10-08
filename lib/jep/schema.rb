@@ -72,6 +72,7 @@ end
 
 message "ProblemUpdate" do
   prop "fileProblems", [0,:*], FileProblems
+  prop "partial", [0,1], Boolean
 end
 
 # Content Completion
