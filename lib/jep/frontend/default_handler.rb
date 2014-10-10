@@ -14,6 +14,7 @@ def initialize(options={})
   @problem_tracker.add_change_listener(method(:problems_changed))
   @on_problem_change = options[:on_problem_change] || ->(probs){}
   @completion_requests = {}
+  @completion_timeout = options[:completion_timeout] || 5
 end
 
 def message_received(msg)
@@ -21,7 +22,7 @@ def message_received(msg)
   when Schema::ProblemUpdate
     @problem_tracker.update(msg)
   when Schema::CompletionResponse
-    handle_completion_response
+    handle_completion_response(msg)
   end
 end
 
@@ -43,29 +44,29 @@ end
 def completion_request(file, pos, options={})
   token = Time.now.to_f.to_s
   @completion_requests[token] = Time.now
-  @connector.send_message("CompletionRequest", {
-    "file" => file, 
-    "pos" => pos,
-    "limit" => options[:limit],
-    "token" => token})
+  @connector.send_message(Schema::CompletionRequest.new(
+    :file => file, 
+    :pos => pos,
+    :limit => options[:limit],
+    :token => token))
   token
 end
 
 # Frontends use this method to poll for the results of a completion request.
 # The result shows whether the completion is :pending, a :timeout has occurred,
-# the token is :invalid or on success it returns a CompletionList object.
+# the token is :invalid or on success it returns a CompletionResponse object.
 def completion_result(token)
   req = @completion_requests[token]
   if req
     if req.is_a?(Time)
-      if Time.now - req < CompletionRequestTimeout
+      if Time.now - req < @completion_timeout
         :pending
       else
-        @completion_requests.delete[token]
+        @completion_requests.delete(token)
         :timeout
       end
     else
-      @completion_requests.delete[token]
+      @completion_requests.delete(token)
       req
     end
   else
@@ -74,11 +75,10 @@ def completion_result(token)
 end
 
 def handle_completion_response(msg)
-  token = msg.object["token"]
-  req =  @completion_requests[token]
+  req =  @completion_requests[msg.token]
   if req
-    if req.is_a?(Time) && (Time.now - req < CompletionRequestTimeout)
-      @completion_requests[token] = CompletionList.new(msg)
+    if req.is_a?(Time) && (Time.now - req < @completion_timeout)
+      @completion_requests[msg.token] = msg
     else
       @connector.log(:warn, "CompletionResponse: response too late")
     end

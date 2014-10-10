@@ -1,3 +1,5 @@
+require 'jep/content_tracker'
+
 module JEP
 module Backend
 
@@ -17,31 +19,23 @@ def message_received(msg, context)
   case msg
   when Schema::ContentSync
     @content_tracker.update(msg)
+  when Schema::CompletionRequest
+    handle_CompletionRequest(msg)
   when Schema::Shutdown
     context.stop_service
   end
 end
 
-def handle_CompletionRequest(msg, context)
-  file = msg.object["file"]
-  if file
-    contents = @file_contents[file]
-    if contents
-      pos = msg.object["pos"]
-      if pos
-        if @completion_provider
-          @completion_provider.call(file, content, pos)
-        else
-          context.log(:info, "CompletionRequest: no provider registered")
-        end
-      else
-        context.log(:error, "CompletionRequest: missing position property")
-      end
+def handle_CompletionRequest(msg)
+  content = @content_tracker.content(file)
+  if content
+    if @completion_provider
+      @completion_provider.call(file, content, msg.pos)
     else
-      context.log(:error, "CompletionRequest: unknown file #{file}")
+      @context.log(:info, "CompletionRequest: no provider registered")
     end
   else
-    context.log(:error, "CompletionRequest: missing file property")
+    @context.log(:error, "CompletionRequest: unknown file '#{file}'")
   end
 end
 
