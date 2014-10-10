@@ -201,6 +201,8 @@ def work_internal
         @state = :disconnected
       end
     end
+  when :disconnected
+    stop
   end
 end
 
