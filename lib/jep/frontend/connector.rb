@@ -1,5 +1,5 @@
 require 'socket'
-require 'jep/message_serializer'
+require 'msgpack'
 require 'jep/schema_instantiator'
 require 'jep/schema_serializer'
 require 'win32/process' if RUBY_PLATFORM =~ /mingw/
@@ -20,7 +20,7 @@ def initialize(config, options={})
   @connection_listener = options[:connect_callback]
   @connection_timeout = options[:connection_timeout] || 10
   @log_service_output = options[:log_service_output]
-  @message_serializer = MessageSerializer.new
+  @unpacker = nil
   @state = :init
 end
 
@@ -76,7 +76,7 @@ end
 def send_message(msg)
   if connected?
     msg_hash = SchemaSerializer.new.serialize_message(msg)
-    @socket.send(@message_serializer.serialize_message(msg_hash), 0)
+    @socket.send(MessagePack.pack(msg_hash), 0)
     log :debug, "sent: #{msg_hash.inspect[0..999]}"
     :success
   else
@@ -179,7 +179,7 @@ def work_internal
   when :connected
     repeat = true
     socket_closed = false
-    response_data = ""
+    @unpacker = MessagePack::Unpacker.new
     while repeat
       repeat = false
       data = nil
@@ -192,8 +192,8 @@ def work_internal
       end
       if data
         repeat = true
-        response_data.concat(data)
-        while msg = @message_serializer.deserialize_message(response_data)
+        @unpacker.feed(data)
+        while msg = read_message
           message_received(msg)
         end
       elsif socket_closed
@@ -203,6 +203,14 @@ def work_internal
     end
   when :disconnected
     stop
+  end
+end
+
+def read_message
+  begin
+    @unpacker.read
+  rescue EOFError
+    nil
   end
 end
 

@@ -1,5 +1,5 @@
 require 'socket'
-require 'jep/message_serializer'
+require 'msgpack'
 require 'jep/schema_serializer'
 require 'jep/schema_instantiator'
 
@@ -32,9 +32,8 @@ class Service
     @on_startup = options[:on_startup]
     @server = nil
     @sockets = []
-    @request_data = {}
     @last_flush_time = Time.now
-    @message_serializer = MessageSerializer.new
+    @unpacker = {}
   end
 
   # startup the server, required before +receive+ or +receive_loop+ can be used
@@ -64,20 +63,20 @@ class Service
       rescue Errno::EWOULDBLOCK
       rescue IOError, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED
         sock.close
-        @request_data[sock] = nil
+        @unpacker[sock] = nil
         @sockets.delete(sock)
       rescue Exception => e
         # catch Exception to make sure we don't crash due to unexpected exceptions
         log(:warn, "unexpected exception during socket read: #{e.class}")
         sock.close
-        @request_data[sock] = nil
+        @unpacker[sock] = nil
         @sockets.delete(sock)
       end
       if data
         last_access_time = Time.now
-        @request_data[sock] ||= ""
-        @request_data[sock].concat(data)
-        while msg = @message_serializer.deserialize_message(@request_data[sock])
+        @unpacker[sock] ||= MessagePack::Unpacker.new
+        @unpacker[sock].feed(data)
+        while msg = read_message(@unpacker[sock])
           message_received(sock, msg)
         end
       end
@@ -85,6 +84,14 @@ class Service
     if Time.now > @last_flush_time + FlushInterval
       $stdout.flush
       @last_flush_time = Time.now
+    end
+  end
+
+  def read_message(unpacker)
+    begin
+      unpacker.read
+    rescue EOFError
+      nil
     end
   end
 
@@ -113,8 +120,11 @@ class Service
   # call +send_message+ on the invocation context passed to the reception handler
   def send_message(msg, sock)
     begin
+      log(:debug, "before schema serialize")
       msg_hash = SchemaSerializer.new.serialize_message(msg)
-      sock.write(@message_serializer.serialize_message(msg_hash))
+      log(:debug, "before message serialize")
+      sock.write(MessagePack.pack(msg_hash))
+      log(:debug, "after message serialize")
       sock.flush
       # TODO: improve truncation of large messages
       log(:debug, "sent: "+msg_hash.inspect[0..999])
