@@ -77,7 +77,7 @@ def send_message(msg)
   if connected?
     msg_hash = SchemaSerializer.new.serialize_message(msg)
     @socket.send(@message_serializer.serialize_message(msg_hash), 0)
-    log :debug, "sent: #{msg_hash.inspect}"
+    log :debug, "sent: #{msg_hash.inspect[0..999]}"
     :success
   else
     :not_connected
@@ -208,7 +208,7 @@ end
 
 def message_received(msg)
   reception_start = Time.now
-  log :debug, "received: "+msg.inspect
+  log :debug, "received: "+msg.inspect[0..999]
   @message_handler.message_received(
     SchemaInstantiator.new.instantiate_message(msg)) if @message_handler
   log :info, "reception complete (#{Time.now-reception_start}s)"

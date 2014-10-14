@@ -116,8 +116,8 @@ class Service
       msg_hash = SchemaSerializer.new.serialize_message(msg)
       sock.write(@message_serializer.serialize_message(msg_hash))
       sock.flush
-      # TODO: truncate large messages before logging
-      log(:debug, "sent: "+msg_hash.inspect)
+      # TODO: improve truncation of large messages
+      log(:debug, "sent: "+msg_hash.inspect[0..999])
     # if there is an exception, the next read should shutdown the connection properly
     rescue IOError, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED
     rescue Exception => e
@@ -159,8 +159,8 @@ class Service
 
   def message_received(sock, msg)
     reception_start = Time.now
-    # TODO: truncate large messages before logging
-    log(:debug, "received: "+msg.inspect)
+    # TODO: improve truncation of large messages
+    log(:debug, "received: "+msg.inspect[0..999])
     @message_handler.message_received(
       SchemaInstantiator.new.instantiate_message(msg),
       InvocationContext.new(self, sock))
