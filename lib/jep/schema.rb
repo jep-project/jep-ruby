@@ -86,8 +86,8 @@ end
 
 struct "CompletionOption" do
   prop "insert", String
-  prop "display", [0,1], String
   prop "desc", [0,1], String
+  prop "longDesc", [0,1], String
   prop "semantics", [0,1], SemanticType
   prop "extensionId", [0,1], String
 end
