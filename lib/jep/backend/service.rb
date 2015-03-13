@@ -132,7 +132,7 @@ class Service
     rescue IOError, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED
     rescue Exception => e
       # catch Exception to make sure we don't crash due to unexpected exceptions
-      log(:warn, "unexpected exception during socket write: #{e.class}")
+      log(:warn, "unexpected exception during socket write: #{e}\n#{e.backtrace.join("\n")}")
     end
   end
 

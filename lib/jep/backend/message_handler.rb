@@ -41,16 +41,17 @@ end
 
 private
 
-def content_changed(file, context)
+def content_changed(file)
   if @content_checker
-    content = @content_tracker.content_by_file(file)
+    content = @content_tracker.content(file)
     problems = @content_checker.call(file, content)
-    context.send_message("ProblemUpdate", {
-      :fileProblems => [{
-        :file => file,
-        :problems => problems
-      }]
-    })
+    @context && @context.send_message(Schema::ProblemUpdate.new(
+      :fileProblems => [
+        Schema::FileProblems.new(
+          :file => file,
+          :problems => problems
+        )
+      ]))
   end
 end
 

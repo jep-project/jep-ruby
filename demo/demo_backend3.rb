@@ -12,12 +12,12 @@ handler = JEP::Backend::MessageHandler.new(
     parser = Parser::CurrentRuby.new
     parser.diagnostics.all_errors_are_fatal = false
     parser.diagnostics.consumer = lambda do |diag|
-      problems << {
+      problems << JEP::Schema::Problem.new(
         # dup since diag message is frozen
         :message => diag.message.dup,
         :line => diag.location.line,
-        :severity => "error"
-      }
+        :severity => :error
+      )
     end
     buffer = Parser::Source::Buffer.new("dummy")
     buffer.source = content
