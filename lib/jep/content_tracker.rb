@@ -19,7 +19,7 @@ def update(message)
   starti = message.start || 0
   endi = message.end || @content_by_file[message.file].size
   endi = starti if endi < starti
-  @content_by_file[message.file][starti, endi-starti] = message.binary
+  @content_by_file[message.file][starti, endi-starti] = message.data
   # TODO: check if content really changed
   @listeners.each do |l|
     l.call(message.file)

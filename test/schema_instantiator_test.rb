@@ -36,14 +36,6 @@ def test_enum
   assert_equal :warn, m.fileProblems[0].problems[0].severity
 end
 
-def test_binary
-  m = @inst.instantiate_message(
-    {"_message"=>"ContentSync", "_binary"=>"1234"}
-  )
-  assert m.is_a?(JEP::Schema::ContentSync)
-  assert_equal "1234", m.binary
-end
-
 def test_nested
   m = @inst.instantiate_message(
     {"_message"=>"ProblemUpdate",

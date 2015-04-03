@@ -8,8 +8,6 @@ def test_message_access_methods
   o = JEP::Schema::ContentSync.new
   o.file = "filename1"
   assert_equal "filename1", o.file
-  o.binary = "1234"
-  assert_equal "1234", o.binary
 end
 
 def test_struct_access_methods

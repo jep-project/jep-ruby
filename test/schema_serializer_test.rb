@@ -38,14 +38,6 @@ def test_enum
     @ser.serialize_message(m))
 end
 
-def test_binary
-  m = JEP::Schema::ContentSync.new
-  m.binary = "1234"
-  assert_equal(
-    {"_message"=>"ContentSync", "_binary"=>"1234"},
-    @ser.serialize_message(m))
-end
-
 def test_nested
   m = JEP::Schema::ProblemUpdate.new(
         :fileProblems => [

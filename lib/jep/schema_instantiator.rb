@@ -26,14 +26,9 @@ end
 def instantiate_struct(clazz, hash)
   obj = clazz.new
   hash.keys.each do |key|
-    if key == "_binary"
-      fkey = "binary"
-    else
-      fkey = key
-    end
-    f = clazz.ecore.eAllStructuralFeatures.find{|f| f.name == fkey}
+    f = clazz.ecore.eAllStructuralFeatures.find{|f| f.name == key}
     if f
-      obj.setGeneric(fkey, instantiate_value(f, hash[key]))
+      obj.setGeneric(key, instantiate_value(f, hash[key]))
     else
       log "unexpected property '#{key}' within '#{clazz.ecore.name}'"
     end

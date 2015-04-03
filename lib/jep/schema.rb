@@ -39,7 +39,7 @@ message "ContentSync" do
   prop "file", String
   prop "start", [0,1], Integer
   prop "end", [0,1], Integer
-  binary 
+  prop "data", String
 end
 
 message "OutOfSync" do

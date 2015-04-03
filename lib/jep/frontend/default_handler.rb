@@ -31,7 +31,7 @@ def problems_changed(file)
 end
 
 def sync_file(file, content)
-  @connector.send_message(Schema::ContentSync.new(:file => file, :binary => content))
+  @connector.send_message(Schema::ContentSync.new(:file => file, :data => content))
 end
 
 # Request a CompletionList object for +file+ and +pos+.

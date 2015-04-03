@@ -25,13 +25,7 @@ def serialize_struct(struct)
       end
     else
       if !val.nil?
-        # binary property is a special hash key
-        if f.name == "binary"
-          fname = "_binary"
-        else
-          fname = f.name
-        end
-        hash[fname] = serialize_value(f, val)
+        hash[f.name] = serialize_value(f, val)
       end
     end
   end

@@ -42,13 +42,6 @@ end
 end
 
 class Message < Struct
-
-def self.binary
-  has_attr "binary", String do
-    annotation :source => "jep", :details => {"binary" => "true"}
-  end
-end
-
 end
 
 def self.message(name, &block)

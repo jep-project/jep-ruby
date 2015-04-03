@@ -26,7 +26,7 @@ def handle_ContentSync(msg, context)
     end_index = (msg.object["end"] || editor.length).to_i
     if start_index >= 0 && start_index <= editor.length &&
        end_index >= start_index && end_index <= editor.length
-      editor.replaceText(start_index, end_index-start_index, msg.binary)
+      editor.replaceText(start_index, end_index-start_index, msg.data)
       run_check(editor.extractText(0, editor.length))
     else
       context.send_message("OutOfSync")
@@ -43,7 +43,7 @@ def handle_ContentSync(msg, context)
 
     start_index = (msg.object["start"] || 0).to_i
     if start_index == 0
-      editor.insertText(0, msg.binary)
+      editor.insertText(0, msg.data)
     else
       context.send_message("OutOfSync")
     end
