@@ -136,6 +136,12 @@ class Service
     end
   end
 
+  def log(severity, message)
+    if @logger
+      @logger.send(severity, message)
+    end
+  end
+
   private
 
   def create_server
@@ -175,12 +181,6 @@ class Service
       SchemaInstantiator.new.instantiate_message(msg),
       InvocationContext.new(self, sock))
     log(:info, "reception complete (#{Time.now-reception_start}s)")
-  end
-
-  def log(severity, message)
-    if @logger
-      @logger.send(severity, message)
-    end
   end
 
 end

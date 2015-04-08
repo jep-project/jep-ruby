@@ -27,7 +27,7 @@ def message_received(msg, context)
 end
 
 def handle_CompletionRequest(msg)
-  content = @content_tracker.content(file)
+  content = @content_tracker.content(msg.file)
   if content
     if @completion_provider
       @completion_provider.call(file, content, msg.pos)
@@ -35,7 +35,7 @@ def handle_CompletionRequest(msg)
       @context.log(:info, "CompletionRequest: no provider registered")
     end
   else
-    @context.log(:error, "CompletionRequest: unknown file '#{file}'")
+    @context.log(:error, "CompletionRequest: unknown file '#{msg.file}'")
   end
 end
 
