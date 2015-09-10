@@ -71,6 +71,7 @@ def handle_ContentSync(msg, context)
 
     @tabbook.create
     @tabbook.recalc
+    @tabbook.setCurrent(@tabbook.indexOfChild(tab)/2)
 
     hilite = HiliteDesc.new(0, 0, 0)
     @file_data[file] = FileData.new(file, tab, editor, hilite)
@@ -82,7 +83,6 @@ def handle_ContentSync(msg, context)
           if hilite.start > 0
             #fd.text.changeStyle(0, hilite.start, 1)
           end
-          puts fd.text.hiliteStyles.size
           fd.text.changeStyle(fd.hilite.start, fd.hilite.end-fd.hilite.start, fd.hilite.step+1)
           if fd.hilite.end < fd.text.length
             #fd.text.changeStyle(hilite.end, fd.text.length-fd.hilite.end, 1)
