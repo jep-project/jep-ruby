@@ -1,4 +1,4 @@
 *.demo:
-ruby demo_backend3.rb
+ruby demo_backend.rb
 *.gitconfig:
 $HOME/.rvm/wrappers/ruby-2.1.2@jep/ruby gitconfig_backend.rb

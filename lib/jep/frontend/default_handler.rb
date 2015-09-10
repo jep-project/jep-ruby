@@ -30,8 +30,18 @@ def problems_changed(file)
   @on_problem_change.call(@problem_tracker.problems_by_file)
 end
 
-def sync_file(file, content)
-  @connector.send_message(Schema::ContentSync.new(:file => file, :data => content))
+# Send update for +file+ containing +content+.
+#
+# options:
+#   start: update region start index
+#   end update region end index
+#
+def sync_file(file, content, options={})
+  @connector.send_message(Schema::ContentSync.new(
+    :file => file, 
+    :data => content,
+    :start => options[:start], 
+    :end => options[:end]))
 end
 
 # Request a CompletionList object for +file+ and +pos+.
