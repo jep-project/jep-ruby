@@ -76,9 +76,15 @@ end
 def send_message(msg)
   if connected?
     msg_hash = SchemaSerializer.new.serialize_message(msg)
-    @socket.send(MessagePack.pack(msg_hash), 0)
-    log :debug, "sent: #{msg_hash.inspect[0..999]}"
-    :success
+    begin
+      @socket.send(MessagePack.pack(msg_hash), 0)
+      log :debug, "sent: #{msg_hash.inspect[0..999]}"
+      :success
+    rescue IOError, Errno::ECONNRESET, Errno::ECONNABORTED => e
+      disconnect
+      log :info, "server socket closed (#{e.class})"
+      :not_connected
+    end
   else
     :not_connected
   end
@@ -167,18 +173,16 @@ def work_internal
         @connection_listener.call(:connected) if @connection_listener
         log :info, "connected"
       rescue Errno::ECONNREFUSED
-        @socket.close if @socket
-        @state = :disconnected
+        disconnect
         log :warn, "could not connect socket (connection refused)"
       end
     end
     if Time.now > @connect_start_time + @connection_timeout
-      @state = :disconnected
+      disconnect
       log :warn, "could not connect socket (connection timeout)"
     end
   when :connected
     repeat = true
-    socket_closed = false
     @unpacker = MessagePack::Unpacker.new
     while repeat
       repeat = false
@@ -186,9 +190,9 @@ def work_internal
       begin
         data = @socket.read_nonblock(1000000)
       rescue Errno::EWOULDBLOCK
-      rescue IOError, EOFError, Errno::ECONNRESET
-        socket_closed = true
-        log :info, "server socket closed (end of file)"
+      rescue IOError, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED => e
+        disconnect
+        log :info, "server socket closed (#{e.class})"
       end
       if data
         repeat = true
@@ -196,14 +200,17 @@ def work_internal
         while msg = read_message
           message_received(msg)
         end
-      elsif socket_closed
-        @socket.close
-        @state = :disconnected
       end
     end
   when :disconnected
     stop
   end
+end
+
+def disconnect
+  @socket.close if @socket
+  @socket = nil
+  @state = :disconnected
 end
 
 def read_message
