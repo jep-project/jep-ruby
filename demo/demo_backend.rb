@@ -21,7 +21,10 @@ def initialize(app)
   @file_data = {}
   @editor_font = FXFont.new(getApp, "courier")
 
+  FXToolTip.new(app, TOOLTIP_PERMANENT)
+
   app.addTimeout(100, :repeat => true) do |sender, sel, data|
+    update_problem_tooltip
     @file_data.values.each do |fd|
       if fd.hilite.step > 0
         fd.hilite.step -= 1
@@ -43,6 +46,28 @@ def initialize(app)
         end
       end
     end
+  end
+end
+
+def update_problem_tooltip
+  fd = current_file_data
+  if fd
+    ed = fd.text 
+    line = ed.countLines(0, ed.getPosAt(ed.cursorPosition[0], ed.cursorPosition[1])) + 1
+    prob = fd.problems.find{|p| p.line == line}
+    if prob
+      ed.tipText = prob.message
+    else
+      ed.tipText = nil
+    end
+  end
+end
+
+def current_file_data
+  if @tabbook.current >= 0
+    @file_data.values.find{|fd| fd.tab == @tabbook.childAtIndex(@tabbook.current*2)}
+  else
+    nil
   end
 end
 
@@ -73,7 +98,8 @@ def handle_ContentSync(msg, context)
       fd.hilite.start = start_index
       fd.hilite.end = start_index+msg.data.size
       fd.hilite.step = 10
-      fd.problems = run_check(context, file, editor.extractText(0, editor.length))
+      fd.problems = run_check(file, editor.extractText(0, editor.length))
+      send_problems_message(context)
 
       # hilite styles must be recreated when the content changes
       # otherwise the result is strange (e.g. red colored text when it should be black)
@@ -84,6 +110,7 @@ def handle_ContentSync(msg, context)
     @tabbook.setCurrent(@tabbook.indexOfChild(fd.tab)/2)
   else
     tab = FXTabItem.new(@tabbook, File.basename(file), nil)
+    tab.tipText = file
     textbox = FXHorizontalFrame.new(@tabbook,
         FRAME_SUNKEN|LAYOUT_FILL_X|LAYOUT_FILL_Y, 0,0,0,0, 0,0,0,0)
     editor = FXText.new(textbox, :opts => LAYOUT_FILL_X|LAYOUT_FILL_Y)
@@ -105,7 +132,8 @@ def handle_ContentSync(msg, context)
       hilite.start = 0
       hilite.end = msg.data.size
       hilite.step = 10
-      @file_data[file].problems = run_check(context, file, editor.extractText(0, editor.length))
+      @file_data[file].problems = run_check(file, editor.extractText(0, editor.length))
+      send_problems_message(context)
     else
       context.send_message("OutOfSync")
     end
@@ -128,7 +156,7 @@ def create_hilite_styles(editor)
   styles
 end
 
-def run_check(context, file, text)
+def run_check(file, text)
   problems = []
   parser = Parser::CurrentRuby.new
   parser.diagnostics.all_errors_are_fatal = false
@@ -149,15 +177,18 @@ def run_check(context, file, text)
     # however those were already reported to the consumer correctly
   end
 
-  context.send_message(JEP::Schema::ProblemUpdate.new(
-    :fileProblems => [
-      JEP::Schema::FileProblems.new(
-        :file => file,
-        :problems => problems
-      )
-    ]))
-
   problems
+end
+
+def send_problems_message(context)
+  context.send_message(JEP::Schema::ProblemUpdate.new(
+    :fileProblems => @file_data.values.collect do |fd|
+      JEP::Schema::FileProblems.new(
+        :file => fd.file,
+        :problems => fd.problems
+      )
+    end
+    ))
 end
 
 end
