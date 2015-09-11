@@ -15,9 +15,18 @@ HiliteDesc = Struct.new(:start, :end, :step)
 
 def initialize(app)
   super(app, "JEP Demo Backend", nil, nil, DECOR_ALL, 0, 0, 850, 600, 0, 0)
-  contents = FXHorizontalFrame.new(self,
-    LAYOUT_SIDE_TOP|FRAME_NONE|LAYOUT_FILL_X|LAYOUT_FILL_Y|PACK_UNIFORM_WIDTH)
-  @tabbook = FXTabBook.new(contents,:opts => LAYOUT_FILL_X|LAYOUT_FILL_Y|LAYOUT_RIGHT)
+
+  vframe = FXVerticalFrame.new(self,
+    LAYOUT_SIDE_TOP|FRAME_NONE|LAYOUT_FILL_X|LAYOUT_FILL_Y)
+
+  splitter = FXSplitter.new(vframe, (LAYOUT_SIDE_TOP|LAYOUT_FILL_X|
+      LAYOUT_FILL_Y|SPLITTER_REVERSED|SPLITTER_TRACKING|SPLITTER_VERTICAL)) 
+
+  @statusbar = FXStatusBar.new(vframe,
+      LAYOUT_SIDE_BOTTOM|LAYOUT_FILL_X)
+ 
+  @tabbook = FXTabBook.new(splitter,:opts => LAYOUT_FILL_X|LAYOUT_FILL_Y|LAYOUT_TOP)
+  @problist = FXList.new(splitter,:opts => LAYOUT_FILL_X|LAYOUT_FILL_Y|LAYOUT_TOP)
   @file_data = {}
   @editor_font = FXFont.new(getApp, "courier")
 
@@ -99,7 +108,7 @@ def handle_ContentSync(msg, context)
       fd.hilite.end = start_index+msg.data.size
       fd.hilite.step = 10
       fd.problems = run_check(file, editor.extractText(0, editor.length))
-      send_problems_message(context)
+      update_problems(context)
 
       # hilite styles must be recreated when the content changes
       # otherwise the result is strange (e.g. red colored text when it should be black)
@@ -113,7 +122,7 @@ def handle_ContentSync(msg, context)
     tab.tipText = file
     textbox = FXHorizontalFrame.new(@tabbook,
         FRAME_SUNKEN|LAYOUT_FILL_X|LAYOUT_FILL_Y, 0,0,0,0, 0,0,0,0)
-    editor = FXText.new(textbox, :opts => LAYOUT_FILL_X|LAYOUT_FILL_Y)
+    editor = FXText.new(textbox, :opts => LAYOUT_FILL_X|LAYOUT_FILL_Y|TEXT_READONLY)
     editor.styled = true
     editor.font = @editor_font
 
@@ -133,7 +142,7 @@ def handle_ContentSync(msg, context)
       hilite.end = msg.data.size
       hilite.step = 10
       @file_data[file].problems = run_check(file, editor.extractText(0, editor.length))
-      send_problems_message(context)
+      update_problems(context)
     else
       context.send_message("OutOfSync")
     end
@@ -180,7 +189,14 @@ def run_check(file, text)
   problems
 end
 
-def send_problems_message(context)
+def update_problems(context)
+  @problist.clearItems
+  @file_data.values.collect do |fd|
+    fd.problems.each do |p|
+      @problist.appendItem("#{p.severity.to_s.upcase} | #{File.basename(fd.file)}:#{p.line} | #{p.message}")
+    end
+  end
+  @statusbar.statusLine.normalText = "#{@problist.numItems} problems"
   context.send_message(JEP::Schema::ProblemUpdate.new(
     :fileProblems => @file_data.values.collect do |fd|
       JEP::Schema::FileProblems.new(
