@@ -12,6 +12,9 @@ class DemoBackend < FXMainWindow
 
 FileData = Struct.new(:file, :tab, :text, :hilite, :problems)
 HiliteDesc = Struct.new(:start, :end, :step)
+PopupDesc = Struct.new(:ticks)
+
+attr_reader :popup
 
 def initialize(app)
   super(app, "JEP Demo Backend", nil, nil, DECOR_ALL, 0, 0, 850, 600, 0, 0)
@@ -32,8 +35,18 @@ def initialize(app)
 
   FXToolTip.new(app, TOOLTIP_PERMANENT)
 
+  @popup = FXPopup.new(self)
+  @complist = FXList.new(@popup,:opts => LAYOUT_FILL_X|LAYOUT_FILL_Y|LAYOUT_TOP)
+  @popup_desc = PopupDesc.new
+
   app.addTimeout(100, :repeat => true) do |sender, sel, data|
     update_problem_tooltip
+    if @popup_desc.ticks && @popup_desc.ticks > 0
+      @popup_desc.ticks -= 1
+      if @popup_desc.ticks == 0
+        @popup.popdown
+      end
+    end
     @file_data.values.each do |fd|
       if fd.hilite.step > 0
         fd.hilite.step -= 1
@@ -87,7 +100,7 @@ def message_received(msg, context)
   when JEP::Schema::ContentSync
     handle_ContentSync(msg, context)
   when JEP::Schema::CompletionRequest
-    handle_CompletionRequest(msg)
+    handle_CompletionRequest(msg, context)
   when JEP::Schema::Shutdown
     context.stop_service
     getApp.exit
@@ -116,7 +129,7 @@ def handle_ContentSync(msg, context)
     else
       context.send_message("OutOfSync")
     end
-    @tabbook.setCurrent(@tabbook.indexOfChild(fd.tab)/2)
+    select_tab(fd.tab)
   else
     tab = FXTabItem.new(@tabbook, File.basename(file), nil)
     tab.tipText = file
@@ -130,7 +143,7 @@ def handle_ContentSync(msg, context)
 
     @tabbook.create
     @tabbook.recalc
-    @tabbook.setCurrent(@tabbook.indexOfChild(tab)/2)
+    select_tab(tab)
 
     hilite = HiliteDesc.new(0, 0, 0)
     @file_data[file] = FileData.new(file, tab, editor, hilite)
@@ -147,6 +160,64 @@ def handle_ContentSync(msg, context)
       context.send_message("OutOfSync")
     end
   end
+end
+
+def select_tab(tab)
+  @tabbook.setCurrent(@tabbook.indexOfChild(tab)/2)
+end
+
+def handle_CompletionRequest(msg, context)
+  file = msg.file
+  fd = @file_data[file]
+  data = (1..100).collect {|i| ["opt#{i}", "opt#{i}"] }
+  if fd
+    select_tab(fd.tab)
+    if !fd.text.positionVisible?(msg.pos)
+      fd.text.makePositionVisible(msg.pos)
+    end
+
+    # cursor is only visible when window is active
+    # also, the cursor disappears when new text is inserted
+    #fd.text.setCursorPos(msg.pos)
+
+    x, y = pos_to_coords(fd.text, msg.pos)
+
+    # self is the main window
+    x, y = translateCoordinatesFrom(fd.text, x, y)
+
+    @complist.clearItems
+    data.each do |d|
+      @complist.appendItem(d[0])
+    end
+
+    @popup.popup(fd.text, self.x+x, self.y+y, 300, 200)
+    @popup_desc.ticks = 30
+  end
+  context.send_message(JEP::Schema::CompletionResponse.new(
+    :token => msg.token,
+    :start => msg.pos,#-word_start.size,
+    :end => msg.pos,
+    :options => data.collect{|d|
+      JEP::Schema::CompletionOption.new(
+        :insert => d[0],
+        :desc => d[1],
+      )},
+    :limitExceeded => false
+  ))
+end
+
+def pos_to_coords(text, pos)
+  x = 0
+  y = 0
+  while y < text.height
+    break if text.getPosAt(0, y+1) > pos || text.getPosAt(0, y) == text.getPosAt(0, y+100)
+    y += 1
+  end
+  while x < text.width
+    break if text.getPosAt(x, y) >= pos
+    x += 1
+  end
+  [x, y]
 end
 
 def create_hilite_styles(editor)
@@ -222,5 +293,6 @@ application.addTimeout(100, on_timeout)
 
 application.create
 main_window.show(PLACEMENT_SCREEN)
+#main_window.popup.popup(main_window, main_window.x, main_window.y, 100, 100)
 application.run
 
