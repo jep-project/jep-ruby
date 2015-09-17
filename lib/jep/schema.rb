@@ -104,6 +104,30 @@ message "CompletionInvocation" do
   prop "extensionId", String
 end
 
+# Links
+
+message "LinkRequest" do
+  prop "file", String
+  prop "pos", Integer
+  prop "limit", [0,1], Integer
+  prop "token", String
+end
+
+struct "LinkTarget" do
+  prop "display", String
+  prop "file", String
+  prop "pos", Integer
+  prop "desc", [0,1], String
+end
+
+message "LinkResponse" do
+  prop "token", String
+  prop "start", Integer
+  prop "end", Integer
+  prop "links", [0,:*], LinkTarget
+  prop "limitExceeded", Boolean
+end
+
 end
 
 end

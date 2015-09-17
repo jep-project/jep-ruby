@@ -13,16 +13,16 @@ def initialize(options={})
   @problem_tracker = ProblemTracker.new
   @problem_tracker.add_change_listener(method(:problems_changed))
   @on_problem_change = options[:on_problem_change] || ->(probs){}
-  @completion_requests = {}
-  @completion_timeout = options[:completion_timeout] || 5
+  @response_messages = {}
+  @response_timeout = options[:response_timeout] || 5
 end
 
 def message_received(msg)
   case msg
   when Schema::ProblemUpdate
     @problem_tracker.update(msg)
-  when Schema::CompletionResponse
-    handle_completion_response(msg)
+  when Schema::CompletionResponse, Schema::LinkResponse
+    handle_response_message(msg)
   end
 end
 
@@ -44,8 +44,8 @@ def sync_file(file, content, options={})
     :end => options[:end]))
 end
 
-# Request a CompletionList object for +file+ and +pos+.
-# Returns a token which must be used when calling +completion_result+
+# Request the completion options for +file+ and +pos+.
+# Returns a token which must be used when calling +request_result+
 # to poll for the result.
 #
 # options:
@@ -53,7 +53,7 @@ end
 #
 def completion_request(file, pos, options={})
   token = Time.now.to_f.to_s
-  @completion_requests[token] = Time.now
+  @response_messages[token] = Time.now
   @connector.send_message(Schema::CompletionRequest.new(
     :file => file, 
     :pos => pos,
@@ -62,38 +62,60 @@ def completion_request(file, pos, options={})
   token
 end
 
-# Frontends use this method to poll for the results of a completion request.
-# The result shows whether the completion is :pending, a :timeout has occurred,
-# the token is :invalid or on success it returns a CompletionResponse object.
-def completion_result(token)
-  req = @completion_requests[token]
-  if req
-    if req.is_a?(Time)
-      if Time.now - req < @completion_timeout
+# Request the link targets for +file+ and +pos+.
+# Returns a token which must be used when calling +request_result+
+# to poll for the result.
+#
+# options:
+#   limit: max number of options to be returned
+#
+def link_request(file, pos, options={})
+  token = Time.now.to_f.to_s
+  @response_messages[token] = Time.now
+  @connector.send_message(Schema::LinkRequest.new(
+    :file => file, 
+    :pos => pos,
+    :limit => options[:limit],
+    :token => token))
+  token
+end
+
+# Generic method to poll for the result of a request.
+# The result shows whether the request is :pending, a :timeout has occurred,
+# the token is :invalid or on success it returns the response object.
+def request_result(token)
+  resp = @response_messages[token]
+  if resp
+    if resp.is_a?(Time)
+      if Time.now - resp < @response_timeout
         :pending
       else
-        @completion_requests.delete(token)
+        @response_messages.delete(token)
         :timeout
       end
     else
-      @completion_requests.delete(token)
-      req
+      @response_messages.delete(token)
+      resp
     end
   else
     :invalid
   end
 end
 
-def handle_completion_response(msg)
-  req =  @completion_requests[msg.token]
+private
+
+# Generic handler for all kinds of response messages
+# TODO: check for the expected response message type
+def handle_response_message(msg)
+  req =  @response_messages[msg.token]
   if req
-    if req.is_a?(Time) && (Time.now - req < @completion_timeout)
-      @completion_requests[msg.token] = msg
+    if req.is_a?(Time) && (Time.now - req < @response_timeout)
+      @response_messages[msg.token] = msg
     else
-      @connector.log(:warn, "CompletionResponse: response too late")
+      @connector.log(:warn, "response too late: #{msg.class}")
     end
   else
-    @connector.log(:error, "CompletionResponse: unexpected token")
+    @connector.log(:error, "unexpected token: #{msg.token}")
   end
 end
 

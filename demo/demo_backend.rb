@@ -101,6 +101,8 @@ def message_received(msg, context)
     handle_ContentSync(msg, context)
   when JEP::Schema::CompletionRequest
     handle_CompletionRequest(msg, context)
+  when JEP::Schema::LinkRequest
+    handle_LinkRequest(msg, context)
   when JEP::Schema::Shutdown
     context.stop_service
     getApp.exit
@@ -206,6 +208,24 @@ def handle_CompletionRequest(msg, context)
   ))
 end
 
+def handle_LinkRequest(msg, context)
+  file = msg.file
+  fd = @file_data[file]
+  data = [["Top", file, 1], ["Below", file, 100]]
+  context.send_message(JEP::Schema::LinkResponse.new(
+    :token => msg.token,
+    :start => msg.pos,
+    :end => msg.pos,
+    :links => data.collect{|d|
+      JEP::Schema::LinkTarget.new(
+        :display => d[0],
+        :file => d[1],
+        :pos => d[2],
+      )},
+    :limitExceeded => false
+  ))
+end
+
 def pos_to_coords(text, pos)
   x = 0
   y = 0
@@ -293,6 +313,5 @@ application.addTimeout(100, on_timeout)
 
 application.create
 main_window.show(PLACEMENT_SCREEN)
-#main_window.popup.popup(main_window, main_window.x, main_window.y, 100, 100)
 application.run
 
