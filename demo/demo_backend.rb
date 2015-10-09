@@ -1,22 +1,23 @@
 $:.unshift(File.dirname(__FILE__)+"/../lib")
+$:.unshift(File.dirname(__FILE__)+"/.")
 require 'fox16'
 require 'fox16/colors'
 require 'logger'
 require 'jep/backend/service'
 require 'jep/schema'
-require 'parser/current'
+require 'ruby_backend'
 
 include Fox
 
 class DemoBackend < FXMainWindow
 
-FileData = Struct.new(:file, :tab, :text, :hilite, :problems)
+FileData = Struct.new(:file, :tab, :text, :hilite, :content, :problems)
 HiliteDesc = Struct.new(:start, :end, :step)
 PopupDesc = Struct.new(:ticks)
 
 attr_reader :popup
 
-def initialize(app)
+def initialize(app, backend)
   super(app, "JEP Demo Backend", nil, nil, DECOR_ALL, 0, 0, 850, 600, 0, 0)
 
   vframe = FXVerticalFrame.new(self,
@@ -38,6 +39,9 @@ def initialize(app)
   @popup = FXPopup.new(self)
   @complist = FXList.new(@popup,:opts => LAYOUT_FILL_X|LAYOUT_FILL_Y|LAYOUT_TOP)
   @popup_desc = PopupDesc.new
+
+  backend.file_descs = @file_data
+  @backend = backend
 
   app.addTimeout(100, :repeat => true) do |sender, sel, data|
     update_problem_tooltip
@@ -122,7 +126,9 @@ def handle_ContentSync(msg, context)
       fd.hilite.start = start_index
       fd.hilite.end = start_index+msg.data.size
       fd.hilite.step = 10
-      fd.problems = run_check(file, editor.extractText(0, editor.length))
+
+      fd.content = editor.extractText(0, editor.length)
+      @backend.file_changed(file)
       update_problems(context)
 
       # hilite styles must be recreated when the content changes
@@ -156,7 +162,8 @@ def handle_ContentSync(msg, context)
       hilite.start = 0
       hilite.end = msg.data.size
       hilite.step = 10
-      @file_data[file].problems = run_check(file, editor.extractText(0, editor.length))
+      @file_data[file].content = editor.extractText(0, editor.length)
+      @backend.file_changed(file)
       update_problems(context)
     else
       context.send_message("OutOfSync")
@@ -169,61 +176,45 @@ def select_tab(tab)
 end
 
 def handle_CompletionRequest(msg, context)
-  file = msg.file
-  fd = @file_data[file]
-  data = (1..100).collect {|i| ["opt#{i}", "opt#{i}"] }
+  fd = @file_data[msg.file]
+  resp = @backend.completion_request(msg)
   if fd
-    select_tab(fd.tab)
-    if !fd.text.positionVisible?(msg.pos)
-      fd.text.makePositionVisible(msg.pos)
-    end
-
-    # cursor is only visible when window is active
-    # also, the cursor disappears when new text is inserted
-    #fd.text.setCursorPos(msg.pos)
-
-    x, y = pos_to_coords(fd.text, msg.pos)
-
-    # self is the main window
-    x, y = translateCoordinatesFrom(fd.text, x, y)
-
-    @complist.clearItems
-    data.each do |d|
-      @complist.appendItem(d[0])
-    end
-
-    @popup.popup(fd.text, self.x+x, self.y+y, 300, 200)
-    @popup_desc.ticks = 30
+    show_popup_list(fd.tab, fd.text, msg.pos, resp.options.collect{|o| o.insert})
   end
-  context.send_message(JEP::Schema::CompletionResponse.new(
-    :token => msg.token,
-    :start => msg.pos,#-word_start.size,
-    :end => msg.pos,
-    :options => data.collect{|d|
-      JEP::Schema::CompletionOption.new(
-        :insert => d[0],
-        :desc => d[1],
-      )},
-    :limitExceeded => false
-  ))
+  context.send_message(resp)
 end
 
 def handle_LinkRequest(msg, context)
-  file = msg.file
-  fd = @file_data[file]
-  data = [["Top", file, 1], ["Below", file, 100]]
-  context.send_message(JEP::Schema::LinkResponse.new(
-    :token => msg.token,
-    :start => msg.pos,
-    :end => msg.pos,
-    :links => data.collect{|d|
-      JEP::Schema::LinkTarget.new(
-        :display => d[0],
-        :file => d[1],
-        :pos => d[2],
-      )},
-    :limitExceeded => false
-  ))
+  fd = @file_data[msg.file]
+  resp = @backend.link_request(msg)
+  if fd
+    show_popup_list(fd.tab, fd.text, msg.pos, resp.links.collect{|o| o.display})
+  end
+  context.send_message(resp)
+end
+
+def show_popup_list(tab, text, pos, list)
+  select_tab(tab)
+  if !text.positionVisible?(pos)
+    text.makePositionVisible(pos)
+  end
+
+  # cursor is only visible when window is active
+  # also, the cursor disappears when new text is inserted
+  #text.setCursorPos(pos)
+
+  x, y = pos_to_coords(text, pos)
+
+  # self is the main window
+  x, y = translateCoordinatesFrom(text, x, y)
+
+  @complist.clearItems
+  list.each do |l|
+    @complist.appendItem(l)
+  end
+
+  @popup.popup(text, self.x+x, self.y+y, 300, 200)
+  @popup_desc.ticks = 30
 end
 
 def pos_to_coords(text, pos)
@@ -256,30 +247,6 @@ def create_hilite_styles(editor)
   styles
 end
 
-def run_check(file, text)
-  problems = []
-  parser = Parser::CurrentRuby.new
-  parser.diagnostics.all_errors_are_fatal = false
-  parser.diagnostics.consumer = lambda do |diag|
-    problems << JEP::Schema::Problem.new(
-      # dup since diag message is frozen
-      :message => diag.message.dup,
-      :line => diag.location.line,
-      :severity => :error
-    )
-  end
-  buffer = Parser::Source::Buffer.new('(string)')
-  buffer.source = text
-  begin
-    parser.parse(buffer)
-  rescue Parser::SyntaxError => e
-    # some syntax error still cause exceptions, i.e. are fatal
-    # however those were already reported to the consumer correctly
-  end
-
-  problems
-end
-
 def update_problems(context)
   @problist.clearItems
   @file_data.values.collect do |fd|
@@ -301,7 +268,8 @@ end
 end
 
 application = FXApp.new("JEP", "Demo")
-main_window = DemoBackend.new(application)
+backend = RubyBackend.new
+main_window = DemoBackend.new(application, backend)
 
 service = JEP::Backend::Service.new(main_window, :logger => Logger.new($stdout))
 service.startup
