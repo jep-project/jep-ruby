@@ -216,5 +216,18 @@ def test_read_output_lines_with_logger
   con.stop
 end
 
+def test_early_output
+  man = JEP::Frontend::ConnectorManager.new do |config|
+    JEP::Frontend::Connector.new(config)
+  end
+
+  con = man.connector_for_file("plain/file.earlyout")
+  assert_not_nil con
+
+  con.start
+  con.work :for => 5, :while => ->{ !con.connected? }
+  assert con.connected?
+end
+
 end
 

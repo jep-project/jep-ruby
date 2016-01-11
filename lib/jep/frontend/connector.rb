@@ -163,7 +163,7 @@ def work_internal
   case @state
   when :connecting
     if @service_output_lines.size > 0 && 
-        @service_output_lines[0] =~ /^JEP service, listening on port (\d+)/
+        @service_output_lines.any?{|l| l =~ /^JEP service, listening on port (\d+)/ }
       port = $1.to_i
       log :info, "connecting to #{port}"
       begin

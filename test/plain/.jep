@@ -8,3 +8,6 @@ ruby -e 'puts "JEP service, listening on port 9100"'
 ruby pingpong.rb nostop
 *.probs:
 ruby problems.rb
+*.earlyout:
+ruby earlyout.rb
+
