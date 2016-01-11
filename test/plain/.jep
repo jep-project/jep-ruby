@@ -1,4 +1,4 @@
-*.plain, *.plain2:
+*.plain, *.plain2, file_plain, file_plain.txt:
 ruby pingpong.rb
 *.hang_on_startup:
 ruby -e 'sleep(10)'

@@ -5,12 +5,12 @@ module Config
 def self.find_service_config(file)
   last_dir = nil
   dir = File.expand_path(File.dirname(file))
-  search_pattern = file_pattern(file)
+  search_patterns = file_pattern(file)
   while dir != last_dir
     config_file = "#{dir}/.jep"
     if File.exist?(config_file)
       configs = parse_config_file(config_file)
-      config = configs.find{|s| s.patterns.any?{|p| p == search_pattern}}
+      config = configs.find{|s| s.patterns.any?{|p| search_patterns.include?(p)}}
       return config if config
     end
     last_dir = dir
@@ -22,9 +22,9 @@ end
 def self.file_pattern(file)
   ext = File.extname(file)
   if ext.size > 0
-    "*#{ext}"
+    ["*#{ext}", File.basename(file)]
   else
-    File.basename(file)
+    [File.basename(file)]
   end
 end
 

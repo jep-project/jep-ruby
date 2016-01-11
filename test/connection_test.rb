@@ -28,6 +28,12 @@ def test_connector_identity
   con3 = man.connector_for_file("plain/file2.plain")
   assert_equal con.object_id, con3.object_id
 
+  con6 = man.connector_for_file("plain/file_plain")
+  assert_equal con.object_id, con6.object_id
+
+  con7 = man.connector_for_file("plain/file_plain.txt")
+  assert_equal con.object_id, con7.object_id
+
   # different extension
   con4 = man.connector_for_file("plain/file.plain2")
   assert_equal con.object_id, con4.object_id
